@@ -1,0 +1,1 @@
+"""Agentes especializados da Sinergia."""

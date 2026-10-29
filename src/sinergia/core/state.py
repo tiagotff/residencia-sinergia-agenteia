@@ -29,3 +29,8 @@ class CaseState(TypedDict, total=False):
     processing_status: str
     review: dict[str, Any]
     escalations: list[dict[str, Any]]
+
+    # Agente 3 — Monitoramento
+    monitoring_date: str
+    detection: dict[str, Any]
+    monitoring: dict[str, Any]

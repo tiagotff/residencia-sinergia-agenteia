@@ -63,6 +63,12 @@ class IntakeRepository:
             raise NotFoundError(f"Protocolo não encontrado: {protocol}")
         return Intake.model_validate(dict(row))
 
+    def exists(self, protocol: str) -> bool:
+        """Se o protocolo já tem linha de entrada."""
+        with self._db.connect() as conn:
+            row = conn.execute("SELECT 1 FROM intakes WHERE protocol = ?", (protocol,)).fetchone()
+        return row is not None
+
     def open_pendency(
         self, protocol: str, kind: str, target_area: str, rule_id: str | None, at: datetime
     ) -> None:

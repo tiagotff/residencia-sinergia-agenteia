@@ -8,6 +8,8 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph.state import CompiledStateGraph
 
+from sinergia.agents.escalation.graph import EscalationDeps, build_escalation_graph
+from sinergia.agents.escalation.service import EscalationService
 from sinergia.agents.monitoring.graph import MonitoringDeps, build_monitoring_graph
 from sinergia.agents.monitoring.service import MonitoringService
 from sinergia.agents.monitoring.writer import build_writer
@@ -32,8 +34,9 @@ from sinergia.data.database import Database
 from sinergia.data.employees import EmployeeRepository
 from sinergia.data.file_store import FileStore
 from sinergia.data.intakes import IntakeRepository
+from sinergia.data.tasks import TaskRepository
 from sinergia.data.vacations import VacationRepository
-from sinergia.graph import build_case_graph
+from sinergia.graph import build_case_graph, build_cycle_graph
 
 
 @dataclass(frozen=True)
@@ -50,10 +53,12 @@ class Container:
     vacations: VacationRepository
     employees: EmployeeRepository
     alerts: AlertRepository
+    tasks: TaskRepository
     audit: AuditLog
     reception: ReceptionService
     review: ReviewService
     monitoring: MonitoringService
+    escalation: EscalationService
 
 
 @dataclass(frozen=True)
@@ -79,6 +84,7 @@ class _Shared:
     vacations: VacationRepository
     employees: EmployeeRepository
     alerts: AlertRepository
+    tasks: TaskRepository
     audit: AuditLog
 
 
@@ -91,34 +97,31 @@ def build_container(settings: Settings, overrides: Overrides | None = None) -> C
         "reception": build_reception_graph(_reception_deps(shared, model)),
         "processing": build_processing_graph(_processing_deps(settings, shared, model, extra)),
         "monitoring": build_monitoring_graph(_monitoring_deps(settings, shared, model)),
+        "escalation": build_escalation_graph(_escalation_deps(shared)),
     }
-    case = build_case_graph(agents, extra.checkpointer or sqlite_checkpointer(settings))
-    return _assemble(settings, shared, database, case, agents["monitoring"])
+    checkpointer = extra.checkpointer or sqlite_checkpointer(settings)
+    graphs = {
+        "caso": build_case_graph(agents, checkpointer),
+        "ciclo": build_cycle_graph(agents, checkpointer),
+    }
+    return _assemble(settings, shared, database, graphs)
 
 
 def _assemble(
-    settings: Settings,
-    shared: _Shared,
-    database: Database,
-    case: CompiledStateGraph,
-    monitoring: CompiledStateGraph,
+    settings: Settings, shared: _Shared, database: Database, graphs: dict[str, CompiledStateGraph]
 ) -> Container:
-    """Junta as peças e os serviços que usam o grafo do caso."""
+    """Junta as peças e os serviços que usam os grafos do caso e do ciclo."""
+    case = graphs["caso"]
     return Container(
         settings=settings,
-        rules=shared.rules,
-        clock=shared.clock,
         database=database,
-        files=shared.files,
-        intakes=shared.intakes,
-        absences=shared.absences,
-        vacations=shared.vacations,
-        employees=shared.employees,
-        alerts=shared.alerts,
-        audit=shared.audit,
+        **{name: getattr(shared, name) for name in _Shared.__dataclass_fields__},
         reception=ReceptionService(case, shared.files),
         review=ReviewService(case, shared.absences),
-        monitoring=MonitoringService(monitoring),
+        monitoring=MonitoringService(graphs["ciclo"], shared.tasks, shared.clock),
+        escalation=EscalationService(
+            graphs, shared.tasks, shared.rules.escalation, shared.audit, shared.clock
+        ),
     )
 
 
@@ -137,6 +140,7 @@ def _shared(settings: Settings, extra: Overrides) -> tuple[_Shared, Database]:
         vacations=VacationRepository(database),
         employees=EmployeeRepository(database),
         alerts=AlertRepository(database),
+        tasks=TaskRepository(database),
         audit=AuditLog(database, clock, rules.version),
     )
     return shared, database
@@ -185,6 +189,18 @@ def _monitoring_deps(
         writer=build_writer(model),
         clock=shared.clock,
         salt=settings.pseudonym_salt.get_secret_value(),
+    )
+
+
+def _escalation_deps(shared: _Shared) -> EscalationDeps:
+    """Dependências do Agente 4."""
+    return EscalationDeps(
+        rules=shared.rules,
+        absences=shared.absences,
+        alerts=shared.alerts,
+        tasks=shared.tasks,
+        audit=shared.audit,
+        clock=shared.clock,
     )
 
 

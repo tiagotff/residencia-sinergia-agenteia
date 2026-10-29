@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     )
     cfm_timeout_seconds: float = 10.0
     crm_registry_path: Path = Path("config/crm_registry.yaml")
+    pseudonym_salt: SecretStr = SecretStr("sal-de-desenvolvimento-troque-no-env")
 
     @property
     def database_path(self) -> Path:

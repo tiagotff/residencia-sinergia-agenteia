@@ -44,6 +44,9 @@ def run_monitoring(args: argparse.Namespace) -> int:
     print(f"Alertas novos: {len(summary['created'])}; já conhecidos: {summary['already_known']}")
     for group in summary["suppressed"]:
         print(f"  A05: grupo {group} pequeno demais — dados não exibidos.")
+    if summary["proposals"]:
+        print(f"Encaminhamentos propostos: {summary['proposals']} (sessão {summary['session_id']})")
+        print(f"  Para confirmar: sinergia escalation show {summary['session_id']}")
     return 0
 
 

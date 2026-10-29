@@ -31,11 +31,20 @@ def main() -> None:
     print(write_employees_csv(history, Path("samples/colaboradores.csv")))
     print(_write_expected(history, reference))
     if args.avaliar:
-        summary = container.monitoring.run(reference)
-        alerts = container.alerts.list()
-        salt = settings.pseudonym_salt.get_secret_value()
-        report = evaluate(alerts, summary["suppressed"], history, salt)
-        print(json.dumps(report, ensure_ascii=False, indent=2))
+        _evaluate(container, settings, history, reference)
+
+
+def _evaluate(container, settings: Settings, history, reference: date) -> None:  # noqa: ANN001
+    """Roda o ciclo (Agentes 3 e 4) e mede os alertas contra o gabarito."""
+    summary = container.monitoring.run(reference)
+    salt = settings.pseudonym_salt.get_secret_value()
+    report = evaluate(container.alerts.list(), summary["suppressed"], history, salt)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    if summary["proposals"]:
+        print(
+            f"{summary['proposals']} encaminhamento(s) proposto(s) pelo Agente 4: "
+            f"sinergia escalation show {summary['session_id']}"
+        )
 
 
 def _args() -> argparse.Namespace:

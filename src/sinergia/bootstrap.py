@@ -8,6 +8,9 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph.state import CompiledStateGraph
 
+from sinergia.agents.monitoring.graph import MonitoringDeps, build_monitoring_graph
+from sinergia.agents.monitoring.service import MonitoringService
+from sinergia.agents.monitoring.writer import build_writer
 from sinergia.agents.processing.crm import CrmVerifier, build_crm_verifier
 from sinergia.agents.processing.extraction import build_field_extractor
 from sinergia.agents.processing.graph import ProcessingDeps, build_processing_graph
@@ -23,8 +26,10 @@ from sinergia.core.llm import build_chat_model
 from sinergia.core.rules import RuleCatalog, load_rules
 from sinergia.core.settings import Settings
 from sinergia.data.absences import AbsenceRepository
+from sinergia.data.alerts import AlertRepository
 from sinergia.data.audit import AuditLog
 from sinergia.data.database import Database
+from sinergia.data.employees import EmployeeRepository
 from sinergia.data.file_store import FileStore
 from sinergia.data.intakes import IntakeRepository
 from sinergia.data.vacations import VacationRepository
@@ -43,9 +48,12 @@ class Container:
     intakes: IntakeRepository
     absences: AbsenceRepository
     vacations: VacationRepository
+    employees: EmployeeRepository
+    alerts: AlertRepository
     audit: AuditLog
     reception: ReceptionService
     review: ReviewService
+    monitoring: MonitoringService
 
 
 @dataclass(frozen=True)
@@ -69,6 +77,8 @@ class _Shared:
     intakes: IntakeRepository
     absences: AbsenceRepository
     vacations: VacationRepository
+    employees: EmployeeRepository
+    alerts: AlertRepository
     audit: AuditLog
 
 
@@ -77,16 +87,21 @@ def build_container(settings: Settings, overrides: Overrides | None = None) -> C
     extra = overrides or Overrides()
     shared, database = _shared(settings, extra)
     model = extra.chat_model if extra.chat_model is not None else build_chat_model(settings)
-    reception = build_reception_graph(_reception_deps(shared, model))
-    processing = build_processing_graph(_processing_deps(settings, shared, model, extra))
-    case = build_case_graph(
-        reception, processing, extra.checkpointer or sqlite_checkpointer(settings)
-    )
-    return _assemble(settings, shared, database, case)
+    agents = {
+        "reception": build_reception_graph(_reception_deps(shared, model)),
+        "processing": build_processing_graph(_processing_deps(settings, shared, model, extra)),
+        "monitoring": build_monitoring_graph(_monitoring_deps(settings, shared, model)),
+    }
+    case = build_case_graph(agents, extra.checkpointer or sqlite_checkpointer(settings))
+    return _assemble(settings, shared, database, case, agents["monitoring"])
 
 
 def _assemble(
-    settings: Settings, shared: _Shared, database: Database, case: CompiledStateGraph
+    settings: Settings,
+    shared: _Shared,
+    database: Database,
+    case: CompiledStateGraph,
+    monitoring: CompiledStateGraph,
 ) -> Container:
     """Junta as peças e os serviços que usam o grafo do caso."""
     return Container(
@@ -98,9 +113,12 @@ def _assemble(
         intakes=shared.intakes,
         absences=shared.absences,
         vacations=shared.vacations,
+        employees=shared.employees,
+        alerts=shared.alerts,
         audit=shared.audit,
         reception=ReceptionService(case, shared.files),
         review=ReviewService(case, shared.absences),
+        monitoring=MonitoringService(monitoring),
     )
 
 
@@ -117,6 +135,8 @@ def _shared(settings: Settings, extra: Overrides) -> tuple[_Shared, Database]:
         intakes=IntakeRepository(database),
         absences=AbsenceRepository(database),
         vacations=VacationRepository(database),
+        employees=EmployeeRepository(database),
+        alerts=AlertRepository(database),
         audit=AuditLog(database, clock, rules.version),
     )
     return shared, database
@@ -149,6 +169,22 @@ def _processing_deps(
         vacations=shared.vacations,
         audit=shared.audit,
         clock=shared.clock,
+    )
+
+
+def _monitoring_deps(
+    settings: Settings, shared: _Shared, model: BaseChatModel | None
+) -> MonitoringDeps:
+    """Dependências do Agente 3."""
+    return MonitoringDeps(
+        rules=shared.rules,
+        employees=shared.employees,
+        absences=shared.absences,
+        alerts=shared.alerts,
+        audit=shared.audit,
+        writer=build_writer(model),
+        clock=shared.clock,
+        salt=settings.pseudonym_salt.get_secret_value(),
     )
 
 

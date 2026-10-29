@@ -1,6 +1,7 @@
-"""Documentos sintéticos para exercitar o Agente 1.
+"""Documentos sintéticos para exercitar os Agentes 1 e 2.
 
-Todos os nomes, CRMs e textos são fictícios. Requer o extra ``dev`` (reportlab).
+Todos os nomes, CRMs e textos são fictícios; os CRMs da faixa 900000 constam só no
+registro fictício ``config/crm_registry.yaml``. Requer o extra ``dev`` (reportlab).
 """
 
 import io
@@ -8,34 +9,81 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-TEXTS = {
-    "atestado_medico": [
+SIGNATURE = "Assinatura e carimbo do médico"
+DOCTOR = "Dra. Helena Ficticia Ramos — CRM 900123/SP"
+
+
+def certificate(
+    days: int,
+    start: str,
+    issued: str | None = None,
+    doctor: str = DOCTOR,
+    cid: str | None = None,
+    signed: bool = True,
+) -> list[str]:
+    """Linhas de um atestado médico fictício."""
+    lines = [
         "ATESTADO MÉDICO",
-        "Atesto, para os devidos fins, que o(a) paciente Colaborador Fictício 1001",
-        "necessita de 3 (três) dias de afastamento de suas atividades",
-        "a partir de 27/10/2026.",
-        "Campinas, 27/10/2026",
-        "Dra. Exemplo Fictícia — CRM 000000/SP",
-    ],
+        "Paciente: Joana Exemplo da Silva",
+        f"Atesto que a paciente acima necessita de {days}",
+        f"dias de afastamento a partir de {start}.",
+    ]
+    if cid:
+        lines.append(f"CID: {cid} (informado com autorização da paciente)")
+    lines += [f"Campinas, {issued or start}", doctor]
+    return lines + ([SIGNATURE] if signed else [])
+
+
+TEXTS = {
+    "atestado_medico": certificate(3, "27/10/2026"),
     "declaracao_comparecimento": [
         "DECLARAÇÃO DE COMPARECIMENTO",
-        "Declaro que Colaborador Fictício 1002 compareceu a consulta",
+        "Paciente: Joana Exemplo da Silva",
+        "Declaro que a paciente acima compareceu a consulta",
         "no dia 27/10/2026, das 14h às 16h.",
-        "Dr. Exemplo Fictício — CRM 000001/SP",
+        "Dr. Marcos Ficticio Lima — CRM 900456/SP",
+        SIGNATURE,
     ],
     "atestado_acompanhante": [
         "ATESTADO DE ACOMPANHANTE",
-        "Atesto que Colaborador Fictício 1003 esteve como acompanhante",
+        "Paciente: Joana Exemplo da Silva",
+        "Atesto que a paciente acima esteve como acompanhante",
         "de familiar em atendimento no dia 27/10/2026.",
-        "Dra. Exemplo Fictícia — CRM 000002/SP",
+        "Dra. Paula Ficticia Nunes — CRM 900789/SP",
+        SIGNATURE,
     ],
     "receita_medica": [
         "RECEITUÁRIO",
-        "Paciente: Colaborador Fictício 1004",
+        "Paciente: Joana Exemplo da Silva",
         "Uso oral: medicamento fictício, 1 comprimido a cada 8 horas.",
-        "Dr. Exemplo Fictício — CRM 000003/SP",
+        "Dr. Marcos Ficticio Lima — CRM 900456/SP",
     ],
+    "atestado_longo_cid": certificate(20, "27/10/2026", cid="J11"),
+    "atestado_datas_incoerentes": certificate(3, "27/10/2026", issued="05/11/2026"),
+    "atestado_crm_aposentado": certificate(
+        3, "27/10/2026", doctor="Dr. Rafael Ficticio Costa — CRM 900321/SP"
+    ),
+    "atestado_sem_assinatura": certificate(
+        3, "27/10/2026", doctor="Dra. Helena Ficticia Ramos", signed=False
+    ),
+    "atestado_cid_outubro": certificate(10, "01/10/2026", cid="J11"),
+    "atestado_acentos": [
+        "ATESTADO MÉDICO",
+        "Paciente: Márcia Conceição Antônio",
+        "Atesto que a paciente acima necessita de 2",
+        "dias de afastamento a partir de 27/10/2026.",
+        "São José dos Campos, 27/10/2026",
+        "Dr. João Fictício Araújo — CRM 900456/SP",
+        SIGNATURE,
+    ],
+    "atestado_cid_novembro": certificate(8, "27/10/2026", cid="J11.1"),
 }
+
+
+VACATIONS_CSV = (
+    "employee_id;start_date;end_date\n7007;26/10/2026;09/11/2026\n7008;01/12/2026;30/12/2026\n"
+)
+"""Férias fictícias no formato do Excel em português (ponto e vírgula)."""
 
 
 def pdf_bytes(lines: list[str]) -> bytes:
@@ -57,18 +105,40 @@ def image_of(lines: list[str], size: tuple[int, int] = (1240, 1754)) -> Image.Im
     """Desenha o texto numa folha branca, como uma foto bem tirada."""
     image = Image.new("RGB", size, "white")
     draw = ImageDraw.Draw(image)
-    font = ImageFont.load_default(size=max(12, size[0] // 34))
+    font = _font(max(12, size[0] // 40))
     y = size[1] // 12
     for line in lines:
-        draw.text((size[0] // 14, y), line, fill="black", font=font)
+        draw.text((size[0] // 16, y), line, fill="black", font=font)
         y += int(font.size * 1.8)
     return image
+
+
+def _font(size: int) -> ImageFont.FreeTypeFont:
+    """Fonte com os acentos do português (Vera, que acompanha o reportlab).
+
+    A fonte embutida do Pillow não desenha letras acentuadas: o "é" vira um quadrado,
+    e a imagem deixaria de representar um atestado real.
+    """
+    import reportlab
+
+    return ImageFont.truetype(str(Path(reportlab.__file__).parent / "fonts" / "Vera.ttf"), size)
 
 
 def png_bytes(image: Image.Image) -> bytes:
     """Serializa a imagem em PNG."""
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def phone_photo_bytes(lines: list[str]) -> bytes:
+    """Simula uma foto de celular: fundo de mesa, leve inclinação, desfoque e JPEG."""
+    page = image_of(lines)
+    table = Image.new("RGB", (page.width + 80, page.height + 80), (205, 200, 190))
+    table.paste(page, (40, 40))
+    tilted = table.rotate(2.5, expand=True, fillcolor=(120, 115, 105))
+    buffer = io.BytesIO()
+    tilted.filter(ImageFilter.GaussianBlur(1.2)).save(buffer, format="JPEG", quality=55)
     return buffer.getvalue()
 
 
@@ -94,6 +164,9 @@ def generate_samples(folder: Path) -> list[Path]:
         "imagem_em_branco.png": png_bytes(Image.new("RGB", (1240, 1754), "white")),
         "pdf_corrompido.pdf": b"%PDF-1.4\nconteudo quebrado",
         "anotacao.txt": "texto simples, formato não aceito".encode(),
+        "atestado_foto_acentos.png": png_bytes(image_of(TEXTS["atestado_acentos"])),
+        "atestado_foto_celular.jpg": phone_photo_bytes(TEXTS["atestado_acentos"]),
+        "ferias.csv": VACATIONS_CSV.encode("utf-8"),
     }
     for name, content in files.items():
         (folder / name).write_bytes(content)

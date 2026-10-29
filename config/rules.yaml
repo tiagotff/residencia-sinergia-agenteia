@@ -1,0 +1,32 @@
+# Parâmetros de regras de negócio da Sinergia.
+# Alterar um limiar aqui não exige mudança de código; toda decisão registra a versão usada.
+version: "2026.10.1"
+
+catalog:
+  R01:
+    agent: reception
+    description: Tipo de documento deve estar na lista aceita
+  R02:
+    agent: reception
+    description: Arquivo em formato aceito, legível e completo
+  R03:
+    agent: reception
+    description: Entrega dentro do prazo da política interna ou convenção coletiva
+
+reception:
+  accepted_document_types:
+    - atestado_medico
+    - declaracao_comparecimento
+    - atestado_acompanhante
+  accepted_mime_types:
+    - application/pdf
+    - image/jpeg
+    - image/png
+  max_file_size_mb: 10
+  max_pdf_pages: 4
+  min_image_width_px: 600
+  min_image_height_px: 600
+  min_image_contrast: 5.0      # desvio-padrão dos tons de cinza; abaixo disso a imagem está em branco
+  min_image_sharpness: 4.0     # desvio-padrão das bordas; abaixo disso a foto está desfocada
+  delivery_deadline_days: 2
+  max_resubmission_attempts: 3

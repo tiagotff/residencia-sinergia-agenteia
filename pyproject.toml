@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sinergia"
+version = "0.1.0"
+description = "Arquitetura multiagente para gestão de afastamentos e atestados"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "langgraph>=1.2",
+    "langgraph-checkpoint-sqlite>=3.1",
+    "langchain-core>=1.7",
+    "langchain-groq>=1.1",
+    "pydantic>=2.14",
+    "pydantic-settings>=2.16",
+    "fastapi>=0.162",
+    "uvicorn>=0.54",
+    "python-multipart>=0.0.32",
+    "pypdf>=6.21",
+    "pillow>=13.0",
+    "pyyaml>=6.0",
+    "tzdata>=2026.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.2",
+    "httpx>=0.28",
+    "ruff>=0.17",
+    "reportlab>=5.1",
+]
+
+[project.scripts]
+sinergia = "sinergia.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "N"]

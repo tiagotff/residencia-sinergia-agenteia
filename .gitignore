@@ -1,0 +1,22 @@
+# Ambiente
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Segredos
+.env
+
+# Dados locais (atestados, bancos e checkpoints nunca vão para o repositório)
+/data/
+/samples/
+
+# Ferramentas
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.vscode/
+.idea/

@@ -1,4 +1,4 @@
-"""Documentos sintéticos para exercitar os Agentes 1 e 2.
+"""Documentos sintéticos para exercitar os Agentes 1, 2 e 4.
 
 Todos os nomes, CRMs e textos são fictícios; os CRMs da faixa 900000 constam só no
 registro fictício ``config/crm_registry.yaml``. Requer o extra ``dev`` (reportlab).
@@ -77,6 +77,8 @@ TEXTS = {
         SIGNATURE,
     ],
     "atestado_cid_novembro": certificate(8, "27/10/2026", cid="J11.1"),
+    "atestado_retorno_35dias": certificate(35, "27/10/2026"),
+    "atestado_lesao_punho": certificate(5, "27/10/2026", cid="S62.5"),
 }
 
 

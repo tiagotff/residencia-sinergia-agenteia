@@ -9,7 +9,7 @@ pessoas sai do sistema sem passar por um profissional.
 | --- | --- | --- | --- |
 | A1 · Recepção | Baseado em objetivos | Obter um dossiê de entrada completo e válido | Implementado |
 | A2 · Processamento | Reativo simples | Transformar o documento em registro estruturado | Implementado |
-| A3 · Monitoramento | Reativo baseado em modelo | Detectar padrões fora do esperado | Planejado |
+| A3 · Monitoramento | Reativo baseado em modelo | Detectar padrões fora do esperado | Implementado |
 | A4 · Escalonamento | Baseado em utilidade | Encaminhar cada caso ao responsável certo | Planejado |
 
 Uma crew de insights em **CrewAI** gera, fora do fluxo principal, relatórios para o SESMT a
@@ -118,6 +118,44 @@ sinergia vacation add --employee-id 1001 --start 01/12/2026 --end 20/12/2026
 sinergia vacation list --employee-id 7007
 ```
 
+## Agente 3 — Monitoramento
+
+Reativo baseado em modelo: mantém uma visão da base (o "modelo do mundo") e a compara com a
+linha de base de cada grupo. Roda de dois jeitos: no grafo do caso, logo depois de um
+afastamento válido, e sozinho, no ciclo agendado (`sinergia monitor run` ou
+`POST /monitoring/run`).
+
+```text
+detect   percepção: cadastro + afastamentos válidos → visão pseudonimizada
+         decisão: regras A01–A05, todas estatísticas e explicáveis
+publish  ação: grava os alertas novos com explicação, versão das regras e auditoria
+```
+
+| Regra | O que detecta | Como decide | Dado de saúde? |
+| --- | --- | --- | --- |
+| A01 | Pico de afastamentos no setor | Taxa da semana (dias ÷ pessoas × 7) acima de média + máx(2 desvios, 2 p.p.) das até 8 semanas anteriores (mínimo de 4) | Não |
+| A02 | Mesmo grupo de CID concentrado | ≥ 3 pessoas do mesmo setor ou turno com a mesma categoria de CID em 30 dias | Sim |
+| A03 | Cobertura baixa em função crítica | Menos de 70% da equipe da função disponível na data | Não |
+| A04 | Mesma causa perto do limite do INSS | Um colaborador soma 12 a 15 dias pelo mesmo grupo de CID em 60 dias (antecipa a R11) | Sim, por pseudônimo |
+| A05 | Grupo pequeno demais | Setores e turnos com menos de 5 pessoas são agregados em "Demais grupos" ou suprimidos nas regras de saúde | — |
+
+Os parâmetros ficam em `config/rules.yaml` (seção `monitoring`) e a versão vai junto com cada
+alerta. A mesma regra, grupo e período nunca gera dois alertas, e um padrão que continua nos
+dias seguintes não gera outro enquanto o alerta anterior estiver aberto. O LLM, quando configurado, só
+reescreve a explicação: recebe marcadores no lugar do grupo de CID e do pseudônimo, e o texto
+reescrito só é aceito se mantiver todos os números e marcadores; senão vale o texto padrão.
+
+O agente usa um cadastro mínimo de colaboradores (sem nomes), importado de um CSV da folha
+com as colunas `employee_id`, `sector`, `role`, `shift` e `critical_role` (sim/não).
+
+```bash
+# Histórico fictício com um padrão plantado para cada regra; --avaliar mede precisão e cobertura
+python scripts/generate_synthetic_history.py --date 2026-10-28 --avaliar
+sinergia monitor run --date 2026-10-28
+sinergia alerts list
+sinergia employees import samples/colaboradores.csv
+```
+
 ## Stack
 
 Python 3.12 · LangGraph (com checkpoint em SQLite) · LangChain · Groq · Pydantic · FastAPI ·
@@ -147,7 +185,8 @@ cp .env.example .env
 
 Preencha `GROQ_API_KEY` no `.env` (o arquivo não vai para o repositório). Para rodar sem LLM, use
 `LLM_PROVIDER=none`. Para validar localmente a regra do CRM, mantenha `CRM_VERIFIER=local`.
-Teste a conexão:
+Troque o `PSEUDONYM_SALT` por um valor longo e aleatório (por exemplo, a saída de
+`python -c "import secrets; print(secrets.token_hex(32))"`). Teste a conexão:
 
 ```bash
 sinergia check-llm
@@ -231,6 +270,9 @@ A documentação interativa fica em `http://127.0.0.1:8000/docs`.
 | POST | `/vacations` | Cadastra férias (`employee_id`, `start_date`, `end_date`) |
 | POST | `/vacations/import` | Importa o CSV de férias (multipart: `file`) |
 | GET | `/vacations/{employee_id}` | Férias do colaborador |
+| POST | `/employees/import` | Importa o cadastro de colaboradores (multipart: `file`) |
+| POST | `/monitoring/run` | Roda o Agente 3 (`reference_date` opcional) |
+| GET | `/alerts` | Alertas; `audience=gestao` (padrão, sem CID) ou `audience=sesmt` |
 | GET | `/health` | Disponibilidade |
 
 ```bash
@@ -245,16 +287,17 @@ curl -X POST http://127.0.0.1:8000/reception/submissions \
 ├── config/crm_registry.yaml       # CRMs fictícios para CRM_VERIFIER=local
 ├── src/sinergia/
 │   ├── core/                      # configuração, domínio, estado do caso, LLM, relógio
-│   ├── data/                      # SQLite, entradas, afastamentos, férias, arquivos, auditoria
+│   ├── data/                      # SQLite, entradas, afastamentos, férias, cadastro, alertas
 │   ├── agents/reception/          # Agente 1: inspeção, classificação, objetivo, grafo
 │   ├── agents/processing/         # Agente 2: leitura/OCR, extração, CRM, regras, revisão
+│   ├── agents/monitoring/         # Agente 3: visão pseudonimizada, regras A01–A05, alertas
 │   ├── graph.py                   # grafo do caso, com os agentes como subgrafos
 │   ├── api/                       # FastAPI
-│   ├── synthetic/                 # geradores de documentos fictícios
+│   ├── synthetic/                 # documentos e histórico fictícios
 │   ├── bootstrap.py               # montagem das dependências
-│   └── cli/                       # comando `sinergia` (colaborador, revisão, férias, checagens)
+│   └── cli/                       # comando `sinergia` (envio, revisão, férias, monitoramento)
 ├── scripts/                       # utilitários de linha de comando
-└── tests/                         # testes da fundação, do Agente 1 e da API
+└── tests/                         # testes da fundação, dos agentes 1 a 3 e da API
 ```
 
 ## Privacidade (LGPD)
@@ -265,6 +308,9 @@ curl -X POST http://127.0.0.1:8000/reception/submissions \
   gravado no estado do grafo nem nos checkpoints.
 - O CID só é registrado quando consta no documento, e a fila de revisão e a API mostram apenas
   se ele existe, nunca o código.
+- O Agente 3 só vê pseudônimos (HMAC-SHA256 da matrícula com o `PSEUDONYM_SALT` do `.env`) e
+  a categoria do CID (3 caracteres). Alertas de saúde coletiva valem só para grupos com pelo
+  menos 5 pessoas (A05); a visão da gestão na API não mostra o grupo de CID.
 - A trilha de auditoria registra ação, regras disparadas, versão das regras e responsável, sem
   conteúdo do documento.
 - Com o Groq como provedor, ative o Zero Data Retention em *Data Controls* no console. Em

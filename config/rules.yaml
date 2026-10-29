@@ -1,7 +1,7 @@
 # Parâmetros de regras de negócio da Sinergia.
 # Alterar um limiar aqui não exige mudança de código; toda decisão registra a versão usada.
 # Referências legais devem ser confirmadas com o jurídico antes do uso em produção.
-version: "2026.10.2"
+version: "2026.10.3"
 
 catalog:
   R01:
@@ -37,6 +37,21 @@ catalog:
   R11:
     agent: processing
     description: Mesma doença em até 60 dias somando mais de 15 dias (Decreto 3.048/1999, art. 75)
+  A01:
+    agent: monitoring
+    description: Taxa de afastamento do setor acima da linha de base histórica do próprio setor
+  A02:
+    agent: monitoring
+    description: Concentração de afastamentos de um mesmo grupo de CID num setor ou turno
+  A03:
+    agent: monitoring
+    description: Função crítica com cobertura abaixo do mínimo na data
+  A04:
+    agent: monitoring
+    description: Soma de dias pela mesma causa se aproximando de 15 em 60 dias (antecipa R11)
+  A05:
+    agent: monitoring
+    description: Grupo com menos de N pessoas tem o alerta suprimido ou agregado no nível acima
 
 reception:
   accepted_document_types:
@@ -66,3 +81,14 @@ processing:
   min_ocr_confidence: 0.6               # R08: confiança média da leitura por OCR
   inss_threshold_days: 15               # R10 e R11
   same_cause_window_days: 60            # R11
+
+monitoring:
+  min_group_size: 5             # A05: grupos menores são agregados ou suprimidos
+  baseline_weeks: 8             # A01: semanas anteriores usadas na linha de base
+  min_baseline_weeks: 4         # A01: mínimo de semanas com dados para comparar
+  spike_std_factor: 2.0         # A01: alerta acima de média + k × desvio-padrão
+  min_rate_increase: 0.02       # A01: alta mínima sobre a média (2 pontos percentuais)
+  cid_window_days: 30           # A02: janela para contar casos do mesmo grupo de CID
+  cid_min_cases: 3              # A02: pessoas distintas com o mesmo grupo de CID
+  min_critical_coverage: 0.7    # A03: fração mínima da função crítica disponível
+  same_cause_alert_days: 12     # A04: alerta preventivo a partir deste total de dias

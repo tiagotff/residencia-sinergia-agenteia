@@ -92,6 +92,14 @@ class AbsenceRepository:
         )
         return self._query(sql, (employee_id, exclude_protocol, *_COUNTED_STATUSES))
 
+    def valid_overlapping(self, start: date, end: date) -> list[Absence]:
+        """Afastamentos válidos que tocam o período (para o Agente 3)."""
+        return self._query(
+            "SELECT * FROM absences WHERE status = ? AND start_date IS NOT NULL"
+            " AND start_date <= ? AND COALESCE(end_date, start_date) >= ? ORDER BY start_date",
+            (AbsenceStatus.VALID.value, end.isoformat(), start.isoformat()),
+        )
+
     def add_feedback(
         self, protocol: str, field: str, extracted: Any, corrected: Any, reviewer: str, at: datetime
     ) -> None:

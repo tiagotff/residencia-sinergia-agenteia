@@ -1,7 +1,7 @@
 """Grafo do caso: liga os agentes em cadeia, cada um como subgrafo.
 
-    START → reception (A1) ─┬─ recebido ──→ processing (A2) → FIM
-                            └─ pendente RH → FIM
+    START → reception (A1) ─┬─ recebido ──→ processing (A2) ─┬─ válido ──→ monitoring (A3) → FIM
+                            └─ pendente RH → FIM             └─ invalidado → FIM
 
 Um caso é uma thread do LangGraph: as pausas do colaborador (A1) e do revisor (A2)
 ficam no mesmo checkpoint e são retomadas pelo identificador da sessão.
@@ -13,7 +13,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from sinergia.core.domain import CaseStatus
+from sinergia.core.domain import AbsenceStatus, CaseStatus
 from sinergia.core.state import CaseState
 
 
@@ -22,16 +22,21 @@ def _after_reception(state: CaseState) -> Literal["processing", "__end__"]:
     return "processing" if state.get("status") == CaseStatus.RECEIVED.value else END
 
 
+def _after_processing(state: CaseState) -> Literal["monitoring", "__end__"]:
+    """Só afastamentos válidos alimentam o monitoramento."""
+    valid = state.get("processing_status") == AbsenceStatus.VALID.value
+    return "monitoring" if valid else END
+
+
 def build_case_graph(
-    reception: CompiledStateGraph,
-    processing: CompiledStateGraph,
-    checkpointer: BaseCheckpointSaver,
+    agents: dict[str, CompiledStateGraph], checkpointer: BaseCheckpointSaver
 ) -> CompiledStateGraph:
-    """Compõe os subgrafos dos agentes num único grafo com checkpoint."""
+    """Compõe os subgrafos dos agentes (reception, processing, monitoring) com checkpoint."""
     graph = StateGraph(CaseState)
-    graph.add_node("reception", reception)
-    graph.add_node("processing", processing)
+    for name in ("reception", "processing", "monitoring"):
+        graph.add_node(name, agents[name])
     graph.add_edge(START, "reception")
     graph.add_conditional_edges("reception", _after_reception)
-    graph.add_edge("processing", END)
+    graph.add_conditional_edges("processing", _after_processing)
+    graph.add_edge("monitoring", END)
     return graph.compile(checkpointer=checkpointer)

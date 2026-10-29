@@ -8,6 +8,9 @@ Exemplos:
     sinergia review list
     sinergia review decide SNG-20261028-ABC123 --approve --reviewer "Ana (RH)" --set signed=sim
     sinergia vacation import samples/ferias.csv
+    sinergia employees import samples/colaboradores.csv
+    sinergia monitor run --date 2026-10-28
+    sinergia alerts list
 """
 
 import argparse
@@ -15,7 +18,7 @@ import sys
 
 from pydantic import ValidationError
 
-from sinergia.cli import checks, reception, review, vacations
+from sinergia.cli import checks, monitoring, reception, review, vacations
 from sinergia.core.errors import SinergiaError
 
 
@@ -36,6 +39,6 @@ def _parser() -> argparse.ArgumentParser:
     """Reúne os subcomandos de cada módulo."""
     parser = argparse.ArgumentParser(prog="sinergia", description="Sinergia — agentes")
     sub = parser.add_subparsers(required=True)
-    for module in (checks, reception, review, vacations):
+    for module in (checks, reception, review, vacations, monitoring):
         module.register(sub)
     return parser

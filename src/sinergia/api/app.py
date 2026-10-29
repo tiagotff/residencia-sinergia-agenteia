@@ -1,4 +1,4 @@
-"""API FastAPI dos Agentes 1 e 2.
+"""API FastAPI dos Agentes 1, 2 e 3.
 
 Execução local:
     uvicorn sinergia.api.app:create_default_app --factory --reload
@@ -7,7 +7,17 @@ Execução local:
 from datetime import date
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 
 from sinergia.agents.processing.models import ReviewDecision
 from sinergia.agents.processing.review import ReviewCase
@@ -16,6 +26,7 @@ from sinergia.bootstrap import Container, build_container
 from sinergia.core.domain import DocumentType
 from sinergia.core.errors import NotFoundError, SessionStateError
 from sinergia.core.settings import Settings
+from sinergia.data.alerts import StoredAlert
 from sinergia.data.vacations import Vacation
 
 router = APIRouter()
@@ -23,7 +34,7 @@ router = APIRouter()
 
 def create_app(container: Container) -> FastAPI:
     """Cria a aplicação com o contêiner de dependências informado."""
-    app = FastAPI(title="Sinergia", version="0.2.0")
+    app = FastAPI(title="Sinergia", version="0.3.0")
     app.state.container = container
     app.include_router(router)
     return app
@@ -173,3 +184,48 @@ async def import_vacations(
 def list_vacations(employee_id: str, container: ContainerDep) -> list[Vacation]:
     """Férias cadastradas do colaborador."""
     return container.vacations.for_employee(employee_id)
+
+
+@router.post("/employees/import")
+async def import_employees(
+    file: Annotated[UploadFile, File()], container: ContainerDep
+) -> dict[str, Any]:
+    """Importa o cadastro (employee_id, sector, role, shift, critical_role), sem nomes."""
+    staged = container.files.stage(await file.read(), "colaboradores.csv")
+    try:
+        count = container.employees.import_csv(staged, container.clock())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    finally:
+        container.files.discard(staged)
+    return {"imported": count}
+
+
+@router.post("/monitoring/run")
+def run_monitoring(container: ContainerDep, reference_date: date | None = None) -> dict[str, Any]:
+    """Roda o ciclo do Agente 3 (A01–A05) na data informada ou hoje."""
+    return container.monitoring.run(reference_date)
+
+
+@router.get("/alerts")
+def list_alerts(
+    container: ContainerDep,
+    status: str | None = None,
+    audience: Annotated[str, Query(pattern="^(gestao|sesmt)$")] = "gestao",
+) -> list[dict[str, Any]]:
+    """Alertas; para a gestão, os que têm dado de saúde saem sem grupo de CID.
+
+    O parâmetro ``audience`` marca o lugar do controle de acesso por perfil, que entra
+    junto com a autenticação: aqui ele só escolhe a visão.
+    """
+    return [_alert_view(alert, audience) for alert in container.alerts.list(status)]
+
+
+def _alert_view(alert: StoredAlert, audience: str) -> dict[str, Any]:
+    """Visão completa para o SESMT; visão sem CID para a gestão."""
+    data = alert.model_dump(mode="json")
+    if audience == "sesmt" or not alert.sensitive:
+        return data
+    data["details"] = {k: v for k, v in alert.details.items() if k != "grupo_cid"}
+    data["explanation"] = "Alerta com dado de saúde: detalhes visíveis apenas ao SESMT."
+    return data

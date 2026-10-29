@@ -56,6 +56,20 @@ class ProcessingRules(BaseModel):
         return value
 
 
+class MonitoringRules(BaseModel):
+    """Parâmetros do Agente 3 — Monitoramento (A01–A05)."""
+
+    min_group_size: int = Field(gt=0)
+    baseline_weeks: int = Field(gt=0)
+    min_baseline_weeks: int = Field(gt=0)
+    spike_std_factor: float = Field(ge=0)
+    min_rate_increase: float = Field(ge=0)
+    cid_window_days: int = Field(gt=0)
+    cid_min_cases: int = Field(gt=1)
+    min_critical_coverage: float = Field(gt=0, le=1)
+    same_cause_alert_days: int = Field(gt=0)
+
+
 class RuleCatalog(BaseModel):
     """Conjunto completo de regras com a versão que será registrada na auditoria."""
 
@@ -63,6 +77,7 @@ class RuleCatalog(BaseModel):
     catalog: dict[str, RuleInfo]
     reception: ReceptionRules
     processing: ProcessingRules
+    monitoring: MonitoringRules
 
 
 def load_rules(path: Path) -> RuleCatalog:

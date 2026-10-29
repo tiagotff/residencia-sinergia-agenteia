@@ -70,6 +70,53 @@ class MonitoringRules(BaseModel):
     same_cause_alert_days: int = Field(gt=0)
 
 
+class Urgency(BaseModel):
+    """Nível de urgência: prazo para a área agir e custo de interromper o trabalho."""
+
+    sla_days: int = Field(gt=0)
+    cost: float = Field(ge=0)
+
+
+class DemandRules(BaseModel):
+    """Como tratar um tipo de demanda (regra R10–R13 ou alerta A01–A04)."""
+
+    title: str
+    health: bool
+    min_detail: str
+    severity: float = Field(ge=0)
+    default_deadline_days: int | None = Field(default=None, ge=0)
+    competence: dict[str, float]
+
+
+class EscalationRules(BaseModel):
+    """Parâmetros do Agente 4 — Escalonamento (função de utilidade, R12–R13)."""
+
+    min_utility: float
+    weights: dict[str, float]
+    urgencies: dict[str, Urgency]
+    detail_levels: dict[str, float]
+    health_destinations: list[str]
+    return_exam_min_days: int = Field(gt=0)
+    occupational_cid_prefixes: list[str]
+    chain: dict[str, str]
+    max_reescalations: int = Field(ge=0)
+    demands: dict[str, DemandRules]
+
+    @field_validator("weights")
+    @classmethod
+    def _weights(cls, value: dict[str, float]) -> dict[str, float]:
+        """Exige os quatro pesos da função de utilidade."""
+        missing = {"competence", "privacy", "urgency", "deadline"} - set(value)
+        if missing:
+            raise ValueError(f"Pesos ausentes em escalation.weights: {sorted(missing)}")
+        return value
+
+    @property
+    def max_sla(self) -> int:
+        """Maior SLA, usado para normalizar o atraso."""
+        return max(urgency.sla_days for urgency in self.urgencies.values())
+
+
 class RuleCatalog(BaseModel):
     """Conjunto completo de regras com a versão que será registrada na auditoria."""
 
@@ -78,6 +125,7 @@ class RuleCatalog(BaseModel):
     reception: ReceptionRules
     processing: ProcessingRules
     monitoring: MonitoringRules
+    escalation: EscalationRules
 
 
 def load_rules(path: Path) -> RuleCatalog:

@@ -102,6 +102,34 @@ CREATE TABLE IF NOT EXISTS alerts (
     created_at      TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS tasks (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    demand_key      TEXT NOT NULL,
+    session_id      TEXT NOT NULL,
+    origin          TEXT NOT NULL,
+    rule_id         TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    destination     TEXT NOT NULL,
+    urgency         TEXT NOT NULL,
+    detail          TEXT NOT NULL,
+    subject         TEXT NOT NULL,
+    summary         TEXT NOT NULL,
+    utility         REAL NOT NULL,
+    breakdown       TEXT NOT NULL,
+    primary_choice  INTEGER NOT NULL DEFAULT 0,
+    deadline        TEXT,
+    due_date        TEXT,
+    status          TEXT NOT NULL,
+    attempt         INTEGER NOT NULL DEFAULT 0,
+    parent_id       INTEGER REFERENCES tasks(id),
+    decided_by      TEXT,
+    note            TEXT,
+    rules_version   TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    UNIQUE (demand_key, destination, attempt)
+);
+
 CREATE TABLE IF NOT EXISTS extraction_feedback (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     protocol     TEXT NOT NULL REFERENCES intakes(protocol),

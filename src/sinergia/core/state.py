@@ -34,3 +34,6 @@ class CaseState(TypedDict, total=False):
     monitoring_date: str
     detection: dict[str, Any]
     monitoring: dict[str, Any]
+
+    # Agente 4 — Escalonamento
+    escalation: dict[str, Any]

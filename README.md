@@ -10,7 +10,7 @@ pessoas sai do sistema sem passar por um profissional.
 | A1 · Recepção | Baseado em objetivos | Obter um dossiê de entrada completo e válido | Implementado |
 | A2 · Processamento | Reativo simples | Transformar o documento em registro estruturado | Implementado |
 | A3 · Monitoramento | Reativo baseado em modelo | Detectar padrões fora do esperado | Implementado |
-| A4 · Escalonamento | Baseado em utilidade | Encaminhar cada caso ao responsável certo | Planejado |
+| A4 · Escalonamento | Baseado em utilidade | Encaminhar cada caso ao responsável certo | Implementado |
 
 Uma crew de insights em **CrewAI** gera, fora do fluxo principal, relatórios para o SESMT a
 partir de dados agregados e pseudonimizados.
@@ -156,6 +156,60 @@ sinergia alerts list
 sinergia employees import samples/colaboradores.csv
 ```
 
+## Agente 4 — Escalonamento
+
+Baseado em utilidade: para cada demanda, pontua as alternativas de destino, urgência e nível
+de detalhe e fica com as de maior utilidade. Não usa LLM. Nenhum encaminhamento vale antes de
+uma pessoa confirmar, e o prazo de cada tarefa é acompanhado.
+
+```text
+collect             percepção: R10/R11 do Agente 2, R12/R13 do próprio agente, alertas novos do Agente 3
+decide              decisão: função de utilidade; grava as propostas
+await_confirmation  pausa (interrupt): uma pessoa confirma, cancela ou redireciona
+dispatch            ação: abre as tarefas com prazo e registra na auditoria
+```
+
+Roda no fim do grafo do caso (depois do Agente 3) e no ciclo agendado (`sinergia monitor run`),
+que agora é monitoramento → escalonamento. Cada execução do ciclo é uma sessão própria.
+
+| Demanda | Origem | Destino principal (e outros acima do mínimo) |
+| --- | --- | --- |
+| R10 · afastamento acima de 15 dias | Agente 2 | RH/DP; prazo no 16º dia |
+| R11 · mesma doença acima de 15 dias em 60 | Agente 2 | RH/DP e médico do trabalho |
+| R12 · ausência de 30 dias ou mais (NR-7, item 7.5.9) | Agente 4 | SESMT, médico do trabalho e gestor; prazo no dia da volta |
+| R13 · CID de lesão ou exposição ocupacional (S, T, Z57) | Agente 4 | SESMT e médico do trabalho; CAT até o 1º dia útil seguinte (Lei 8.213/1991, art. 22) |
+| A01 · pico no setor | Agente 3 | SESMT e gestor |
+| A02 · mesmo grupo de CID (indício coletivo, R13) | Agente 3 | SESMT e médico do trabalho |
+| A03 · cobertura baixa em função crítica | Agente 3 | Gestor, urgência crítica |
+| A04 · mesma causa perto do limite | Agente 3 | Médico do trabalho e RH/DP (sem CID) |
+
+A utilidade de cada alternativa é:
+
+```text
+U = competência do destino − custo do nível de detalhe − custo da urgência
+    − gravidade × atraso previsto em relação ao prazo
+```
+
+Os pesos, os SLAs de cada urgência (baixa 10 dias, média 5, alta 2, crítica 1), a competência
+de cada destino por demanda e a cadeia de reescalonamento ficam em `config/rules.yaml` (seção
+`escalation`). A pontuação nunca passa por cima de duas restrições: o gestor não recebe
+demanda com dado de saúde, e o detalhe fica entre o mínimo para agir e o máximo que a origem
+permite (alertas nunca reidentificam pessoas). O CID só aparece no texto para o SESMT e o
+médico do trabalho.
+
+Tarefa aberta que vence sem resposta sobe para o próximo da cadeia (por exemplo, SESMT →
+coordenação do SESMT, gestor → RH/DP), um nível de urgência acima; depois de 2 tentativas fica
+como vencida. O acompanhamento roda com `sinergia escalation sweep` (diariamente).
+
+```bash
+sinergia escalation list                         # sessões aguardando confirmação
+sinergia escalation show <sessão>                # propostas, com a conta da utilidade
+sinergia escalation decide <sessão> --reviewer "Ana (SESMT)" --cancel 4 --redirect 2=rh_dp
+sinergia tasks list --destination gestor         # o que cada área tem para fazer
+sinergia tasks done 7 --by "Carlos (gestor)" --note "escala refeita"
+sinergia escalation sweep                        # reescala o que venceu
+```
+
 ## Stack
 
 Python 3.12 · LangGraph (com checkpoint em SQLite) · LangChain · Groq · Pydantic · FastAPI ·
@@ -209,7 +263,8 @@ Gera atestados, declarações, uma receita (tipo não aceito), fotos nítida, de
 imagem em branco, PDF escaneado, PDF corrompido, um arquivo de texto e casos para cada regra do
 Agente 2 (afastamento longo com CID, datas incoerentes, CRM aposentado, atestado sem assinatura,
 dois atestados com o mesmo CID, uma foto com nomes acentuados, a mesma foto simulando celular —
-inclinada, com fundo e compressão JPEG — e um CSV de férias). Todos os dados são fictícios.
+inclinada, com fundo e compressão JPEG — e um CSV de férias) e do Agente 4 (afastamento de 35
+dias, para R10 e R12, e lesão de punho com CID S62, para R13). Todos os dados são fictícios.
 
 ### 5. Validação pela linha de comando
 
@@ -273,6 +328,12 @@ A documentação interativa fica em `http://127.0.0.1:8000/docs`.
 | POST | `/employees/import` | Importa o cadastro de colaboradores (multipart: `file`) |
 | POST | `/monitoring/run` | Roda o Agente 3 (`reference_date` opcional) |
 | GET | `/alerts` | Alertas; `audience=gestao` (padrão, sem CID) ou `audience=sesmt` |
+| GET | `/escalation/pending` | Sessões com encaminhamentos aguardando confirmação |
+| GET | `/escalation/pending/{session_id}` | Propostas de uma sessão, com a conta da utilidade |
+| POST | `/escalation/pending/{session_id}/decision` | `{"reviewer", "cancel": [ids], "redirect": {"id": "destino"}, "note"}` |
+| POST | `/escalation/sweep` | Reescala as tarefas vencidas |
+| GET | `/tasks` | Tarefas por `destination` e `status` |
+| POST | `/tasks/{task_id}/complete` | `{"by", "note"}` |
 | GET | `/health` | Disponibilidade |
 
 ```bash
@@ -287,17 +348,18 @@ curl -X POST http://127.0.0.1:8000/reception/submissions \
 ├── config/crm_registry.yaml       # CRMs fictícios para CRM_VERIFIER=local
 ├── src/sinergia/
 │   ├── core/                      # configuração, domínio, estado do caso, LLM, relógio
-│   ├── data/                      # SQLite, entradas, afastamentos, férias, cadastro, alertas
+│   ├── data/                      # SQLite, entradas, afastamentos, férias, cadastro, alertas, tarefas
 │   ├── agents/reception/          # Agente 1: inspeção, classificação, objetivo, grafo
 │   ├── agents/processing/         # Agente 2: leitura/OCR, extração, CRM, regras, revisão
 │   ├── agents/monitoring/         # Agente 3: visão pseudonimizada, regras A01–A05, alertas
-│   ├── graph.py                   # grafo do caso, com os agentes como subgrafos
+│   ├── agents/escalation/         # Agente 4: demandas, função de utilidade, confirmação, prazos
+│   ├── graph.py                   # grafos do caso e do ciclo, com os agentes como subgrafos
 │   ├── api/                       # FastAPI
 │   ├── synthetic/                 # documentos e histórico fictícios
 │   ├── bootstrap.py               # montagem das dependências
-│   └── cli/                       # comando `sinergia` (envio, revisão, férias, monitoramento)
+│   └── cli/                       # comando `sinergia` (envio, revisão, férias, monitoramento, escalonamento)
 ├── scripts/                       # utilitários de linha de comando
-└── tests/                         # testes da fundação, dos agentes 1 a 3 e da API
+└── tests/                         # testes da fundação, dos quatro agentes e da API
 ```
 
 ## Privacidade (LGPD)

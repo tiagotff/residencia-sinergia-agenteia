@@ -1,7 +1,7 @@
 # Parâmetros de regras de negócio da Sinergia.
 # Alterar um limiar aqui não exige mudança de código; toda decisão registra a versão usada.
 # Referências legais devem ser confirmadas com o jurídico antes do uso em produção.
-version: "2026.10.3"
+version: "2026.10.4"
 
 catalog:
   R01:
@@ -52,6 +52,12 @@ catalog:
   A05:
     agent: monitoring
     description: Grupo com menos de N pessoas tem o alerta suprimido ou agregado no nível acima
+  R12:
+    agent: escalation
+    description: Ausência de 30 dias ou mais exige exame de retorno antes de reassumir (NR-7, 7.5.9)
+  R13:
+    agent: escalation
+    description: Indício de origem ocupacional segue ao SESMT para avaliar a CAT (decisão humana)
 
 reception:
   accepted_document_types:
@@ -92,3 +98,93 @@ monitoring:
   cid_min_cases: 3              # A02: pessoas distintas com o mesmo grupo de CID
   min_critical_coverage: 0.7    # A03: fração mínima da função crítica disponível
   same_cause_alert_days: 12     # A04: alerta preventivo a partir deste total de dias
+
+escalation:
+  # Destinos possíveis: rh_dp, sesmt, medico_trabalho, gestor.
+  # Utilidade de cada alternativa (destino × urgência × nível de detalhe):
+  #   U = w_competencia × competência do destino
+  #       − w_privacidade × custo do nível de detalhe
+  #       − w_urgencia × custo da urgência (interromper o trabalho da área)
+  #       − w_prazo × gravidade × dias de atraso em relação ao prazo ÷ maior SLA
+  # Recebem tarefa os destinos com U >= min_utility; a de maior U é a principal.
+  min_utility: 0.5
+  weights:
+    competence: 1.0
+    privacy: 0.3
+    urgency: 0.2
+    deadline: 1.0
+  urgencies:                    # SLA = dias para a área agir depois da confirmação humana
+    baixa: {sla_days: 10, cost: 0.0}
+    media: {sla_days: 5, cost: 0.1}
+    alta: {sla_days: 2, cost: 0.25}
+    critica: {sla_days: 1, cost: 0.5}
+  detail_levels:                # do menos ao mais identificável
+    agregado: 0.0
+    pseudonimizado: 0.3
+    individual: 0.6
+  health_destinations: [sesmt, medico_trabalho]   # únicos que veem CID
+  return_exam_min_days: 30      # R12: NR-7, item 7.5.9
+  occupational_cid_prefixes: [S, T, Z57]  # R13: lesões, envenenamentos e exposição ocupacional (validar com o médico do trabalho)
+  chain:                        # quem recebe quando o prazo vence sem resposta
+    rh_dp: coordenacao_rh
+    sesmt: coordenacao_sesmt
+    medico_trabalho: coordenacao_sesmt
+    gestor: rh_dp
+    coordenacao_rh: coordenacao_rh
+    coordenacao_sesmt: coordenacao_sesmt
+  max_reescalations: 2
+  demands:                      # por tipo de demanda: dado de saúde, detalhe mínimo, prazo e competências
+    R10:
+      title: Encaminhamento ao INSS
+      health: false
+      min_detail: individual
+      severity: 1.0
+      competence: {rh_dp: 1.0, gestor: 0.4, sesmt: 0.3, medico_trabalho: 0.3}
+    R11:
+      title: Mesma doença somando mais de 15 dias
+      health: true
+      min_detail: individual
+      severity: 1.0
+      default_deadline_days: 3
+      competence: {rh_dp: 1.0, medico_trabalho: 0.9, sesmt: 0.4}
+    R12:
+      title: Exame de retorno ao trabalho
+      health: false
+      min_detail: individual
+      severity: 0.8
+      competence: {sesmt: 1.0, medico_trabalho: 0.8, gestor: 0.7, rh_dp: 0.5}
+    R13:
+      title: Indício de origem ocupacional (avaliar CAT)
+      health: true
+      min_detail: individual
+      severity: 1.0
+      default_deadline_days: 1
+      competence: {sesmt: 1.0, medico_trabalho: 0.9, rh_dp: 0.3}
+    A01:
+      title: Pico de afastamentos no setor
+      health: false
+      min_detail: agregado
+      severity: 0.5
+      default_deadline_days: 5
+      competence: {sesmt: 0.9, gestor: 0.8, rh_dp: 0.5, medico_trabalho: 0.4}
+    A02:
+      title: Mesmo grupo de CID concentrado (indício ocupacional, R13)
+      health: true
+      min_detail: agregado
+      severity: 0.8
+      default_deadline_days: 3
+      competence: {sesmt: 1.0, medico_trabalho: 0.8, rh_dp: 0.2}
+    A03:
+      title: Cobertura baixa em função crítica
+      health: false
+      min_detail: agregado
+      severity: 0.7
+      default_deadline_days: 0
+      competence: {gestor: 1.0, rh_dp: 0.6, sesmt: 0.1}
+    A04:
+      title: Mesma causa perto do limite do INSS
+      health: true
+      min_detail: pseudonimizado
+      severity: 0.6
+      default_deadline_days: 5
+      competence: {medico_trabalho: 0.9, rh_dp: 0.7, sesmt: 0.5}

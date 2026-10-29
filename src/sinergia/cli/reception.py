@@ -78,6 +78,20 @@ def _print_processing(container: Container, protocol: str) -> None:
         f"CRM {absence.crm_number}/{absence.crm_uf} ({absence.crm_status}) | "
         f"CID presente: {'sim' if absence.cid else 'não'} | extração: {absence.extraction_method}"
     )
+    _print_tasks(container, absence.session_id)
+
+
+def _print_tasks(container: Container, session_id: str) -> None:
+    """Encaminhamentos do Agente 4 para o caso."""
+    tasks = container.tasks.for_session(session_id)
+    for task in tasks:
+        due = f", prazo {task.due_date:%d/%m/%Y}" if task.due_date else ""
+        print(
+            f"Encaminhamento #{task.id} [{task.rule_id}] → {task.destination} "
+            f"({task.urgency}{due}) [{task.status.value}]"
+        )
+    if any(task.status.value == "proposto" for task in tasks):
+        print(f"  Aguardando confirmação: sinergia escalation show {session_id}")
 
 
 def _input_from(

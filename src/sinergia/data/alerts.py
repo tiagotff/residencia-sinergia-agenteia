@@ -83,6 +83,17 @@ class AlertRepository:
             ).fetchone()
         return row is not None
 
+    def by_fingerprints(self, fingerprints: list[str]) -> list[StoredAlert]:
+        """Alertas gravados com essas identidades, na ordem de criação."""
+        if not fingerprints:
+            return []
+        marks = ", ".join("?" for _ in fingerprints)
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM alerts WHERE fingerprint IN ({marks}) ORDER BY id", fingerprints
+            ).fetchall()
+        return [_from_row(dict(row)) for row in rows]
+
     def list(self, status: str | None = None) -> list[StoredAlert]:
         """Alertas, do mais recente para o mais antigo."""
         sql = "SELECT * FROM alerts"

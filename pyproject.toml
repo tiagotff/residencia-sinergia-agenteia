@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sinergia"
-version = "0.1.0"
+version = "0.2.0"
 description = "Arquitetura multiagente para gestão de afastamentos e atestados"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -22,6 +22,9 @@ dependencies = [
     "pillow>=13.0",
     "pyyaml>=6.0",
     "tzdata>=2026.1",
+    "easyocr>=1.7",
+    "numpy>=2.0",
+    "zeep>=4.3",
 ]
 
 [project.optional-dependencies]
@@ -41,6 +44,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+filterwarnings = ["ignore::UserWarning:torch.*", "ignore::DeprecationWarning:easyocr.*", "ignore::DeprecationWarning:torch.*"]
 
 [tool.ruff]
 line-length = 100

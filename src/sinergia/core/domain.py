@@ -33,3 +33,27 @@ class CaseStatus(StrEnum):
     AWAITING_EMPLOYEE = "aguardando_colaborador"
     RECEIVED = "recebido"
     PENDING_HR = "pendente_rh"
+
+
+class AbsenceStatus(StrEnum):
+    """Situação do registro de afastamento criado pelo Agente 2."""
+
+    VALID = "valido"
+    PENDING = "pendente"
+    HUMAN_REVIEW = "revisao_humana"
+    INVALIDATED = "invalidado"
+
+
+EXTRACTED_FIELDS = (
+    "employee_name",
+    "issue_date",
+    "start_date",
+    "end_date",
+    "days",
+    "doctor_name",
+    "crm_number",
+    "crm_uf",
+    "signed",
+    "cid",
+)
+"""Campos que o Agente 2 extrai do documento."""

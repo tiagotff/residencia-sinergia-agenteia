@@ -34,6 +34,53 @@ CREATE TABLE IF NOT EXISTS pendencies (
     created_at   TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS absences (
+    protocol           TEXT PRIMARY KEY REFERENCES intakes(protocol),
+    session_id         TEXT NOT NULL,
+    employee_id        TEXT,
+    employee_name      TEXT,
+    document_type      TEXT,
+    issue_date         TEXT,
+    start_date         TEXT,
+    end_date           TEXT,
+    days               INTEGER,
+    doctor_name        TEXT,
+    crm_number         TEXT,
+    crm_uf             TEXT,
+    crm_status         TEXT,
+    signed             INTEGER,
+    cid                TEXT,
+    status             TEXT NOT NULL,
+    violated_rules     TEXT NOT NULL,
+    field_confidence   TEXT NOT NULL,
+    extraction_method  TEXT NOT NULL,
+    rules_version      TEXT NOT NULL,
+    reviewed_by        TEXT,
+    review_decision    TEXT,
+    review_note        TEXT,
+    updated_at         TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS vacations (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id  TEXT NOT NULL,
+    start_date   TEXT NOT NULL,
+    end_date     TEXT NOT NULL,
+    source       TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
+    UNIQUE (employee_id, start_date, end_date)
+);
+
+CREATE TABLE IF NOT EXISTS extraction_feedback (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    protocol     TEXT NOT NULL REFERENCES intakes(protocol),
+    field        TEXT NOT NULL,
+    extracted    TEXT,
+    corrected    TEXT,
+    reviewer     TEXT NOT NULL,
+    created_at   TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     occurred_at    TEXT NOT NULL,

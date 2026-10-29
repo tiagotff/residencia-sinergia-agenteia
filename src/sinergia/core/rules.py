@@ -3,9 +3,9 @@
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from sinergia.core.domain import DocumentType
+from sinergia.core.domain import EXTRACTED_FIELDS, DocumentType
 from sinergia.core.errors import ConfigurationError
 
 
@@ -36,12 +36,33 @@ class ReceptionRules(BaseModel):
         return int(self.max_file_size_mb * 1024 * 1024)
 
 
+class ProcessingRules(BaseModel):
+    """Parâmetros do Agente 2 — Processamento (R04–R11)."""
+
+    required_fields: dict[DocumentType, list[str]]
+    issue_after_start_tolerance_days: int = Field(ge=0)
+    min_field_confidence: float = Field(ge=0, le=1)
+    min_ocr_confidence: float = Field(ge=0, le=1)
+    inss_threshold_days: int = Field(gt=0)
+    same_cause_window_days: int = Field(gt=0)
+
+    @field_validator("required_fields")
+    @classmethod
+    def _known_fields(cls, value: dict[DocumentType, list[str]]) -> dict[DocumentType, list[str]]:
+        """Recusa nomes de campo que o extrator não conhece."""
+        unknown = {name for names in value.values() for name in names} - set(EXTRACTED_FIELDS)
+        if unknown:
+            raise ValueError(f"Campos desconhecidos em required_fields: {sorted(unknown)}")
+        return value
+
+
 class RuleCatalog(BaseModel):
     """Conjunto completo de regras com a versão que será registrada na auditoria."""
 
     version: str
     catalog: dict[str, RuleInfo]
     reception: ReceptionRules
+    processing: ProcessingRules
 
 
 def load_rules(path: Path) -> RuleCatalog:

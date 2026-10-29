@@ -107,7 +107,9 @@ class ReceptionNodes:
 
     def wait_for_employee(self, state: CaseState) -> dict[str, Any]:
         """Pausa o caso até o colaborador responder e junta a resposta ao envio."""
-        reply = interrupt({"message": state["message"], "missing": state["missing"]})
+        reply = interrupt(
+            {"kind": "employee", "message": state["message"], "missing": state["missing"]}
+        )
         current = Submission.model_validate(state["submission"])
         answer = Submission.model_validate(reply)
         if answer.file_path and answer.file_path != current.file_path:
@@ -209,9 +211,9 @@ def _as_path(value: str | None) -> Path | None:
 
 
 def build_reception_graph(
-    deps: ReceptionDeps, checkpointer: BaseCheckpointSaver
+    deps: ReceptionDeps, checkpointer: BaseCheckpointSaver | None = None
 ) -> CompiledStateGraph:
-    """Monta e compila o subgrafo do Agente 1."""
+    """Monta e compila o subgrafo do Agente 1 (sem checkpointer quando vira nó do grafo do caso)."""
     nodes = ReceptionNodes(deps)
     graph = StateGraph(CaseState)
     graph.add_node("perceive", nodes.perceive)

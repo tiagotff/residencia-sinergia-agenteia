@@ -1,22 +1,15 @@
-"""Linha de comando para validar o Agente 1 localmente.
-
-Exemplos:
-    sinergia check-llm
-    sinergia submit --file samples/atestado_medico.pdf --employee-id 1001 --start 2026-10-27
-    sinergia status SNG-20261028-ABC123
-"""
+"""Comandos do colaborador (Agente 1) e consulta de protocolo."""
 
 import argparse
-import sys
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 from sinergia.agents.reception.models import MissingItem
 from sinergia.agents.reception.service import ReceptionInput, ReceptionResult
 from sinergia.bootstrap import Container, build_container
 from sinergia.core.domain import CaseStatus, DocumentType
-from sinergia.core.errors import SinergiaError
-from sinergia.core.llm import build_chat_model
+from sinergia.core.errors import NotFoundError
 from sinergia.core.settings import Settings
 
 _FILE_ITEMS = {
@@ -27,22 +20,8 @@ _FILE_ITEMS = {
 }
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Ponto de entrada do comando ``sinergia``."""
-    args = _parser().parse_args(argv)
-    try:
-        return args.handler(args)
-    except SinergiaError as exc:
-        print(f"Erro: {exc}", file=sys.stderr)
-        return 1
-
-
-def _parser() -> argparse.ArgumentParser:
-    """Define os subcomandos."""
-    parser = argparse.ArgumentParser(prog="sinergia", description="Sinergia — Agente 1")
-    sub = parser.add_subparsers(required=True)
-    check = sub.add_parser("check-llm", help="testa a conexão com o provedor de LLM")
-    check.set_defaults(handler=_check_llm)
+def register(sub: Any) -> None:
+    """Registra ``submit`` e ``status``."""
     submit = sub.add_parser("submit", help="envia um documento ao Agente 1")
     submit.add_argument("--file", type=Path)
     submit.add_argument("--employee-id")
@@ -50,26 +29,13 @@ def _parser() -> argparse.ArgumentParser:
     submit.add_argument("--start", type=date.fromisoformat, dest="absence_start")
     submit.add_argument("--channel", default="portal")
     submit.add_argument("--no-interactive", action="store_true")
-    submit.set_defaults(handler=_submit)
-    status = sub.add_parser("status", help="mostra a linha de entrada, pendências e auditoria")
+    submit.set_defaults(handler=submit_document)
+    status = sub.add_parser("status", help="mostra entrada, afastamento, pendências e auditoria")
     status.add_argument("protocol")
-    status.set_defaults(handler=_status)
-    return parser
+    status.set_defaults(handler=show_status)
 
 
-def _check_llm(_: argparse.Namespace) -> int:
-    """Faz uma chamada mínima, sem dados pessoais, ao provedor configurado."""
-    settings = Settings()
-    model = build_chat_model(settings)
-    if model is None:
-        print("LLM_PROVIDER=none: nenhum LLM configurado.")
-        return 0
-    reply = model.invoke("Responda apenas com a palavra: ok")
-    print(f"{settings.llm_provider} / {settings.llm_model} respondeu: {reply.content}")
-    return 0
-
-
-def _submit(args: argparse.Namespace) -> int:
+def submit_document(args: argparse.Namespace) -> int:
     """Envia o documento e, no modo interativo, responde ao que o agente pedir."""
     container = build_container(Settings())
     data = _input_from(args.file, args.employee_id, args.declared_type, args.absence_start)
@@ -78,21 +44,40 @@ def _submit(args: argparse.Namespace) -> int:
     while result.status is CaseStatus.AWAITING_EMPLOYEE and not args.no_interactive:
         result = container.reception.reply(result.session_id, _ask(result.missing))
         _print_result(result)
+    if result.protocol:
+        _print_processing(container, result.protocol)
     return 0
 
 
-def _status(args: argparse.Namespace) -> int:
-    """Mostra o que foi registrado para um protocolo."""
+def show_status(args: argparse.Namespace) -> int:
+    """Mostra o que foi registrado para um protocolo (sem o código CID)."""
     container: Container = build_container(Settings())
     intake = container.intakes.get(args.protocol)
     print(intake.model_dump_json(indent=2, exclude={"file_path"}))
+    _print_processing(container, args.protocol)
     for pendency in container.intakes.pendencies_for(args.protocol):
-        print(f"Pendência: {pendency.kind} → {pendency.target_area} ({pendency.status})")
-    for entry in container.audit.list_for(intake.session_id) + container.audit.list_for(
-        args.protocol
-    ):
-        print(f"Auditoria: {entry.occurred_at} {entry.action} regras={entry.rule_ids}")
+        rule = f" [{pendency.rule_id}]" if pendency.rule_id else ""
+        print(f"Pendência{rule}: {pendency.kind} → {pendency.target_area} ({pendency.status})")
+    entries = container.audit.list_for(intake.session_id) + container.audit.list_for(args.protocol)
+    for entry in entries:
+        print(f"Auditoria: {entry.occurred_at} {entry.actor} {entry.action} {entry.rule_ids}")
     return 0
+
+
+def _print_processing(container: Container, protocol: str) -> None:
+    """Resumo do registro criado pelo Agente 2."""
+    try:
+        absence = container.absences.get(protocol)
+    except NotFoundError:
+        return
+    rules = f" — regras: {', '.join(absence.violated_rules)}" if absence.violated_rules else ""
+    period = f"{absence.start_date} a {absence.last_day}" if absence.start_date else "sem período"
+    print(f"Processamento: [{absence.status.value}]{rules}")
+    print(
+        f"  {absence.employee_name} | {period} | {absence.days} dia(s) | "
+        f"CRM {absence.crm_number}/{absence.crm_uf} ({absence.crm_status}) | "
+        f"CID presente: {'sim' if absence.cid else 'não'} | extração: {absence.extraction_method}"
+    )
 
 
 def _input_from(
@@ -147,7 +132,3 @@ def _print_result(result: ReceptionResult) -> None:
     print(f"\n[{result.status.value}] {result.message}")
     if result.protocol:
         print(f"Protocolo: {result.protocol}")
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

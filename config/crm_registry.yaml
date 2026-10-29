@@ -1,0 +1,15 @@
+# Registro FICTÍCIO de CRMs, usado só com CRM_VERIFIER=local (validação local e testes).
+# Não representa médicos reais. Situação segue os códigos do CFM: A = regular.
+SP:
+  "900123":
+    nome: Dra. Helena Ficticia Ramos
+    situacao: A
+  "900456":
+    nome: Dr. Marcos Ficticio Lima
+    situacao: A
+  "900789":
+    nome: Dra. Paula Ficticia Nunes
+    situacao: A
+  "900321":
+    nome: Dr. Rafael Ficticio Costa
+    situacao: P

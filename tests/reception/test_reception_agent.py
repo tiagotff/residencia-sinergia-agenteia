@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from sinergia.agents.reception.service import ReceptionInput
-from sinergia.bootstrap import Container, build_container
+from sinergia.bootstrap import Container, Overrides, build_container
 from sinergia.core.clock import fixed_clock
 from sinergia.core.domain import CaseStatus, DocumentType
 from sinergia.core.errors import NotFoundError, SessionStateError
@@ -99,7 +99,11 @@ def test_late_delivery_opens_pendency_for_hr(container: Container, make_input: M
         "RH",
         "R03",
     )
-    [entry] = container.audit.list_for(result.protocol)
+    [entry] = [
+        item
+        for item in container.audit.list_for(result.protocol)
+        if item.action == "dossie_recebido"
+    ]
     assert entry.rule_ids == ["R03"]
 
 
@@ -118,10 +122,10 @@ def test_hand_over_to_hr_after_max_attempts(container: Container, make_input: Ma
 
 
 def test_paused_session_survives_restart(settings: Settings, make_input: MakeInput) -> None:
-    first_app = build_container(settings, clock=fixed_clock(NOW))
+    first_app = build_container(settings, Overrides(clock=fixed_clock(NOW)))
     paused = first_app.reception.start(make_input("atestado_medico.pdf"))
 
-    restarted = build_container(settings, clock=fixed_clock(NOW))
+    restarted = build_container(settings, Overrides(clock=fixed_clock(NOW)))
     reply = make_input(employee_id="1001", absence_start=YESTERDAY)
     final = restarted.reception.reply(paused.session_id, reply)
     assert final.status is CaseStatus.RECEIVED

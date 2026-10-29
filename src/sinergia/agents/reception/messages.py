@@ -105,8 +105,9 @@ class LlmComposer:
         base = self._fallback.request_missing(items)
         try:
             reply = self._model.invoke([SystemMessage(_SYSTEM_PROMPT), HumanMessage(base)])
-        except Exception:  # noqa: BLE001 — falha do provedor nunca derruba a recepção
-            logger.warning("LLM indisponível; usando mensagem padrão.", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 — falha do provedor nunca derruba a recepção
+            logger.warning("LLM indisponível (%s); usando mensagem padrão.", type(exc).__name__)
+            logger.debug("Detalhe da falha do LLM", exc_info=True)
             return base
         text = str(reply.content).strip()
         return text if 0 < len(text) <= _MAX_LLM_MESSAGE_CHARS else base

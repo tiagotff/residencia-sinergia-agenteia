@@ -10,7 +10,8 @@ from pydantic import BaseModel
 
 from sinergia.agents.reception.models import Submission
 from sinergia.core.domain import CaseStatus, DocumentType
-from sinergia.core.errors import NotFoundError, SessionStateError
+from sinergia.core.errors import SessionStateError
+from sinergia.core.sessions import thread_config, waiting_payload
 from sinergia.data.file_store import FileStore
 
 
@@ -50,22 +51,19 @@ class ReceptionService:
             "submission": self._to_submission(data),
             "resubmissions": 0,
         }
-        output = self._graph.invoke(initial, _config(session_id))
+        output = self._graph.invoke(initial, thread_config(session_id))
         return _to_result(session_id, output)
 
     def reply(self, session_id: str, data: ReceptionInput) -> ReceptionResult:
         """Retoma uma sessão pausada com a resposta do colaborador."""
         self._ensure_waiting(session_id)
         command = Command(resume=self._to_submission(data))
-        output = self._graph.invoke(command, _config(session_id))
+        output = self._graph.invoke(command, thread_config(session_id))
         return _to_result(session_id, output)
 
     def _ensure_waiting(self, session_id: str) -> None:
         """Só aceita resposta em sessões existentes e pausadas."""
-        snapshot = self._graph.get_state(_config(session_id))
-        if not snapshot.values:
-            raise NotFoundError(f"Sessão não encontrada: {session_id}")
-        if not snapshot.interrupts:
+        if waiting_payload(self._graph, session_id, "employee") is None:
             raise SessionStateError(f"A sessão {session_id} não está aguardando resposta.")
 
     def _to_submission(self, data: ReceptionInput) -> dict[str, Any]:
@@ -85,15 +83,10 @@ class ReceptionService:
         return submission.model_dump(mode="json")
 
 
-def _config(session_id: str) -> dict[str, Any]:
-    """Configuração de thread do LangGraph para a sessão."""
-    return {"configurable": {"thread_id": session_id}}
-
-
 def _to_result(session_id: str, output: dict[str, Any]) -> ReceptionResult:
     """Converte a saída do grafo (concluída ou pausada) em resposta."""
-    if "__interrupt__" in output:
-        payload = output["__interrupt__"][0].value
+    payload = _employee_interrupt(output)
+    if payload is not None:
         return ReceptionResult(
             session_id=session_id,
             status=CaseStatus.AWAITING_EMPLOYEE,
@@ -107,3 +100,11 @@ def _to_result(session_id: str, output: dict[str, Any]) -> ReceptionResult:
         missing=output.get("missing", []),
         protocol=output.get("protocol"),
     )
+
+
+def _employee_interrupt(output: dict[str, Any]) -> dict[str, Any] | None:
+    """Pausa à espera do colaborador; pausas de revisão interna não aparecem para ele."""
+    for item in output.get("__interrupt__", []):
+        if isinstance(item.value, dict) and item.value.get("kind") == "employee":
+            return item.value
+    return None

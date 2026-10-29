@@ -1,6 +1,7 @@
 # Parâmetros de regras de negócio da Sinergia.
 # Alterar um limiar aqui não exige mudança de código; toda decisão registra a versão usada.
-version: "2026.10.1"
+# Referências legais devem ser confirmadas com o jurídico antes do uso em produção.
+version: "2026.10.2"
 
 catalog:
   R01:
@@ -12,6 +13,30 @@ catalog:
   R03:
     agent: reception
     description: Entrega dentro do prazo da política interna ou convenção coletiva
+  R04:
+    agent: processing
+    description: Campos obrigatórios presentes (colaborador, datas, dias, médico, CRM/UF, assinatura)
+  R05:
+    agent: processing
+    description: Datas coerentes (fim >= início; emissão não posterior ao início além da tolerância)
+  R06:
+    agent: processing
+    description: CRM ativo na consulta do CFM
+  R07:
+    agent: processing
+    description: Sem sobreposição com outro afastamento do colaborador
+  R08:
+    agent: processing
+    description: Confiança da extração acima do limiar; o agente nunca adivinha um campo
+  R09:
+    agent: processing
+    description: CID só é registrado se constar no documento (Res. CFM 1.658/2002)
+  R10:
+    agent: processing
+    description: Afastamento acima de 15 dias segue para o INSS (Lei 8.213/1991, art. 60)
+  R11:
+    agent: processing
+    description: Mesma doença em até 60 dias somando mais de 15 dias (Decreto 3.048/1999, art. 75)
 
 reception:
   accepted_document_types:
@@ -30,3 +55,14 @@ reception:
   min_image_sharpness: 4.0     # desvio-padrão das bordas; abaixo disso a foto está desfocada
   delivery_deadline_days: 2
   max_resubmission_attempts: 3
+
+processing:
+  required_fields:             # R04, por tipo de documento
+    atestado_medico: [employee_name, start_date, days, doctor_name, crm_number, crm_uf, signed]
+    declaracao_comparecimento: [employee_name, start_date, doctor_name, crm_number, crm_uf, signed]
+    atestado_acompanhante: [employee_name, start_date, doctor_name, crm_number, crm_uf, signed]
+  issue_after_start_tolerance_days: 1   # R05: emissão até N dias depois do início
+  min_field_confidence: 0.8             # R08: confiança de cada campo extraído
+  min_ocr_confidence: 0.6               # R08: confiança média da leitura por OCR
+  inss_threshold_days: 15               # R10 e R11
+  same_cause_window_days: 60            # R11

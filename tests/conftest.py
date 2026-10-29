@@ -7,8 +7,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from sinergia.agents.processing.ocr import EasyOcrEngine
 from sinergia.agents.reception.service import ReceptionInput
-from sinergia.bootstrap import Container, build_container
+from sinergia.bootstrap import Container, Overrides, build_container
 from sinergia.core.clock import fixed_clock
 from sinergia.core.rules import RuleCatalog, load_rules
 from sinergia.core.settings import Settings
@@ -27,6 +28,12 @@ def samples(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return folder
 
 
+@pytest.fixture(scope="session")
+def ocr() -> EasyOcrEngine:
+    """Motor de OCR compartilhado: o modelo é baixado uma vez para data/ocr_models."""
+    return EasyOcrEngine(ROOT / "data" / "ocr_models")
+
+
 @pytest.fixture
 def rules() -> RuleCatalog:
     """Catálogo de regras real do repositório."""
@@ -35,19 +42,21 @@ def rules() -> RuleCatalog:
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    """Configurações isoladas por teste, sem LLM."""
+    """Configurações isoladas por teste, sem LLM e com o registro fictício de CRMs."""
     return Settings(
         _env_file=None,
         llm_provider="none",
+        crm_verifier="local",
+        crm_registry_path=ROOT / "config" / "crm_registry.yaml",
         data_dir=tmp_path / "data",
         rules_path=ROOT / "config" / "rules.yaml",
     )
 
 
 @pytest.fixture
-def container(settings: Settings) -> Container:
+def container(settings: Settings, ocr: EasyOcrEngine) -> Container:
     """Aplicação montada com relógio fixo."""
-    return build_container(settings, clock=fixed_clock(NOW))
+    return build_container(settings, Overrides(clock=fixed_clock(NOW), ocr=ocr))
 
 
 @pytest.fixture

@@ -10,6 +10,7 @@ from typing import Any, TypedDict
 class CaseState(TypedDict, total=False):
     """Estado do caso compartilhado pelos agentes."""
 
+    # Agente 1 — Recepção
     session_id: str
     submission: dict[str, Any]
     resubmissions: int
@@ -20,3 +21,11 @@ class CaseState(TypedDict, total=False):
     protocol: str | None
     message: str
     missing: list[str]
+
+    # Agente 2 — Processamento
+    extraction: dict[str, Any]
+    crm_check: dict[str, Any]
+    validation: dict[str, Any]
+    processing_status: str
+    review: dict[str, Any]
+    escalations: list[dict[str, Any]]

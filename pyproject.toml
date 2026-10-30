@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sinergia"
-version = "0.4.0"
+version = "0.5.0"
 description = "Arquitetura multiagente para gestão de afastamentos e atestados"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -13,8 +13,8 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=3.1",
     "langchain-core>=1.7",
     "langchain-groq>=1.1",
-    "pydantic>=2.14",
-    "pydantic-settings>=2.16",
+    "pydantic>=2.11.9",  # a CrewAI (extra insights) exige pydantic < 2.13
+    "pydantic-settings>=2.14.2",
     "fastapi>=0.162",
     "uvicorn>=0.54",
     "python-multipart>=0.0.32",
@@ -34,6 +34,11 @@ dev = [
     "ruff>=0.17",
     "reportlab>=5.1",
 ]
+insights = [
+    "crewai>=1.15",
+    "streamlit>=1.60",
+    "pandas>=2.2",
+]
 
 [project.scripts]
 sinergia = "sinergia.cli:main"
@@ -44,7 +49,14 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-filterwarnings = ["ignore::UserWarning:torch.*", "ignore::DeprecationWarning:easyocr.*", "ignore::DeprecationWarning:torch.*"]
+filterwarnings = [
+    "ignore::UserWarning:torch.*",
+    "ignore::DeprecationWarning:easyocr.*",
+    "ignore::DeprecationWarning:torch.*",
+    "ignore::DeprecationWarning:crewai.*",
+    "ignore::DeprecationWarning:chromadb.*",
+    "ignore:The inplace keyword in DataFrame.reset_index:Warning",
+]
 
 [tool.ruff]
 line-length = 100

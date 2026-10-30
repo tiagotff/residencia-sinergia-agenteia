@@ -1,0 +1,1 @@
+"""Painel por perfil (Streamlit)."""

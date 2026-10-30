@@ -1,7 +1,7 @@
 # Parâmetros de regras de negócio da Sinergia.
 # Alterar um limiar aqui não exige mudança de código; toda decisão registra a versão usada.
 # Referências legais devem ser confirmadas com o jurídico antes do uso em produção.
-version: "2026.10.4"
+version: "2026.10.5"
 
 catalog:
   R01:
@@ -58,6 +58,9 @@ catalog:
   R13:
     agent: escalation
     description: Indício de origem ocupacional segue ao SESMT para avaliar a CAT (decisão humana)
+  I01:
+    agent: insights
+    description: Relatório só com agregados; grupos abaixo de N, nomes, pseudônimos e CID são barrados
 
 reception:
   accepted_document_types:
@@ -188,3 +191,22 @@ escalation:
       severity: 0.6
       default_deadline_days: 5
       competence: {medico_trabalho: 0.9, rh_dp: 0.7, sesmt: 0.5}
+
+insights:
+  # Crew de insights (CrewAI): relatório semanal para o SESMT, a partir só de agregados.
+  period_days: 7                # período do relatório (termina na data de referência)
+  trend_weeks: 8                # semanas da série por setor usada pelo analista
+  max_report_chars: 6000
+  allowed_small_numbers: 10     # inteiros até este valor podem aparecer sem estar nos fatos
+  stigmatizing_terms:           # o revisor de privacidade barra estes termos (I01)
+    - faltoso
+    - faltosos
+    - problemático
+    - problemáticos
+    - preguiça
+    - preguiçoso
+    - vagabundo
+    - fraude
+    - abuso
+    - culpa
+    - simulação

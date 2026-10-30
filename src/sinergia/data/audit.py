@@ -57,6 +57,15 @@ class AuditLog:
                 ),
             )
 
+    def recent(self, limit: int = 200, actor: str | None = None) -> list[AuditEntry]:
+        """Entradas mais recentes primeiro, opcionalmente de um ator."""
+        sql, params = "SELECT * FROM audit_log", ()
+        if actor:
+            sql, params = sql + " WHERE actor = ?", (actor,)
+        with self._db.connect() as conn:
+            rows = conn.execute(f"{sql} ORDER BY id DESC LIMIT ?", (*params, limit)).fetchall()
+        return [_to_entry(row) for row in rows]
+
     def list_for(self, reference: str) -> list[AuditEntry]:
         """Lista as entradas de uma sessão ou protocolo, em ordem cronológica."""
         with self._db.connect() as conn:

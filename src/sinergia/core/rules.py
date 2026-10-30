@@ -117,6 +117,16 @@ class EscalationRules(BaseModel):
         return max(urgency.sla_days for urgency in self.urgencies.values())
 
 
+class InsightsRules(BaseModel):
+    """Parâmetros da crew de insights (I01)."""
+
+    period_days: int = Field(gt=0)
+    trend_weeks: int = Field(gt=0)
+    max_report_chars: int = Field(gt=0)
+    allowed_small_numbers: int = Field(ge=0)
+    stigmatizing_terms: list[str]
+
+
 class RuleCatalog(BaseModel):
     """Conjunto completo de regras com a versão que será registrada na auditoria."""
 
@@ -126,6 +136,7 @@ class RuleCatalog(BaseModel):
     processing: ProcessingRules
     monitoring: MonitoringRules
     escalation: EscalationRules
+    insights: InsightsRules
 
 
 def load_rules(path: Path) -> RuleCatalog:

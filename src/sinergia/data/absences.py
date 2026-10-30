@@ -92,6 +92,19 @@ class AbsenceRepository:
         )
         return self._query(sql, (employee_id, exclude_protocol, *_COUNTED_STATUSES))
 
+    def status_counts(self) -> dict[str, dict[str, int]]:
+        """Afastamentos por situação, separando os que passaram por revisão humana."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT status, reviewed_by IS NOT NULL AS revisado, COUNT(*) AS n"
+                " FROM absences GROUP BY status, revisado"
+            ).fetchall()
+        counts: dict[str, dict[str, int]] = {}
+        for row in rows:
+            key = "revisado" if row["revisado"] else "automatico"
+            counts.setdefault(row["status"], {})[key] = row["n"]
+        return counts
+
     def valid_overlapping(self, start: date, end: date) -> list[Absence]:
         """Afastamentos válidos que tocam o período (para o Agente 3)."""
         return self._query(

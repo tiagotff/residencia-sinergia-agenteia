@@ -1,0 +1,6 @@
+# Configuração do painel (Streamlit), lida quando ele roda a partir da raiz do repositório.
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = false

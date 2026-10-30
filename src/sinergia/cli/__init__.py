@@ -15,6 +15,9 @@ Exemplos:
     sinergia escalation decide ciclo-2026-10-28-abc123 --reviewer "Ana (SESMT)" --cancel 4
     sinergia tasks list --destination rh_dp
     sinergia escalation sweep
+    sinergia insights run --date 2026-10-28
+    sinergia insights approve 1 --by "Dra. Ana (médica do trabalho)"
+    sinergia dashboard
 """
 
 import argparse
@@ -22,7 +25,7 @@ import sys
 
 from pydantic import ValidationError
 
-from sinergia.cli import checks, escalation, monitoring, reception, review, vacations
+from sinergia.cli import checks, escalation, insights, monitoring, reception, review, vacations
 from sinergia.core.errors import SinergiaError
 
 
@@ -43,6 +46,6 @@ def _parser() -> argparse.ArgumentParser:
     """Reúne os subcomandos de cada módulo."""
     parser = argparse.ArgumentParser(prog="sinergia", description="Sinergia — agentes")
     sub = parser.add_subparsers(required=True)
-    for module in (checks, reception, review, vacations, monitoring, escalation):
+    for module in (checks, reception, review, vacations, monitoring, escalation, insights):
         module.register(sub)
     return parser

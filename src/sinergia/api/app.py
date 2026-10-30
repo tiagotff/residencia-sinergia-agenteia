@@ -1,4 +1,4 @@
-"""API FastAPI dos Agentes 1 a 4.
+"""API FastAPI dos Agentes 1 a 4 e da crew de insights.
 
 Execução local:
     uvicorn sinergia.api.app:create_default_app --factory --reload
@@ -30,6 +30,7 @@ from sinergia.core.domain import DocumentType
 from sinergia.core.errors import NotFoundError, SessionStateError
 from sinergia.core.settings import Settings
 from sinergia.data.alerts import StoredAlert
+from sinergia.data.reports import StoredReport
 from sinergia.data.tasks import StoredTask, TaskStatus
 from sinergia.data.vacations import Vacation
 
@@ -38,7 +39,7 @@ router = APIRouter()
 
 def create_app(container: Container) -> FastAPI:
     """Cria a aplicação com o contêiner de dependências informado."""
-    app = FastAPI(title="Sinergia", version="0.4.0")
+    app = FastAPI(title="Sinergia", version="0.5.0")
     app.state.container = container
     app.include_router(router)
     return app
@@ -290,6 +291,48 @@ def complete_task(task_id: int, completion: Completion, container: ContainerDep)
     """A área informa que resolveu a tarefa."""
     try:
         return container.escalation.complete(task_id, completion.by, completion.note)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SessionStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+class ReportDecision(BaseModel):
+    """Aprovação (ou devolução) do relatório pelo médico do trabalho."""
+
+    approve: bool
+    by: str = Field(min_length=2)
+    note: str | None = None
+
+
+@router.post("/insights/run")
+def run_insights(container: ContainerDep, reference_date: date | None = None) -> StoredReport:
+    """Gera o rascunho do relatório do período (crew ou relatório padrão)."""
+    return container.insights.run(reference_date)
+
+
+@router.get("/insights")
+def list_insights(container: ContainerDep) -> list[StoredReport]:
+    """Relatórios recentes."""
+    return container.reports.recent()
+
+
+@router.get("/insights/{report_id}")
+def get_insight(report_id: int, container: ContainerDep) -> StoredReport:
+    """Um relatório, com os fatos que o embasam."""
+    try:
+        return container.reports.get(report_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/insights/{report_id}/decision")
+def decide_insight(
+    report_id: int, decision: ReportDecision, container: ContainerDep
+) -> StoredReport:
+    """O médico do trabalho aprova ou devolve o rascunho."""
+    try:
+        return container.insights.decide(report_id, decision.approve, decision.by, decision.note)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except SessionStateError as exc:

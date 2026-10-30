@@ -130,6 +130,22 @@ CREATE TABLE IF NOT EXISTS tasks (
     UNIQUE (demand_key, destination, attempt)
 );
 
+CREATE TABLE IF NOT EXISTS reports (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    period_start    TEXT NOT NULL,
+    period_end      TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    method          TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    facts           TEXT NOT NULL,
+    issues          TEXT NOT NULL,
+    rules_version   TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    decided_by      TEXT,
+    decided_at      TEXT,
+    note            TEXT
+);
+
 CREATE TABLE IF NOT EXISTS extraction_feedback (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     protocol     TEXT NOT NULL REFERENCES intakes(protocol),

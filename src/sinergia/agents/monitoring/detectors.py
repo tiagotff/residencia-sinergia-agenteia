@@ -48,7 +48,7 @@ def sector_spikes(
         history = _baseline(snapshot, members, rules)
         if len(history) < rules.min_baseline_weeks:
             continue
-        current = _rate(snapshot, members, 0)
+        current = weekly_rate(snapshot, members, 0)
         mean, spread = statistics.mean(history), statistics.pstdev(history)
         threshold = mean + max(rules.spike_std_factor * spread, rules.min_rate_increase)
         if current > threshold:
@@ -65,13 +65,13 @@ def _baseline(snapshot: Snapshot, members: list[Member], rules: MonitoringRules)
         return []
     offsets = range(1, rules.baseline_weeks + 1)
     return [
-        _rate(snapshot, members, offset)
+        weekly_rate(snapshot, members, offset)
         for offset in offsets
         if snapshot.window(_WEEK, offset)[1] >= first
     ]
 
 
-def _rate(snapshot: Snapshot, members: list[Member], offset: int) -> float:
+def weekly_rate(snapshot: Snapshot, members: list[Member], offset: int) -> float:
     """Dias de afastamento ÷ (pessoas × 7) na janela semanal."""
     first, last = snapshot.window(_WEEK, offset)
     people = {member.person for member in members}

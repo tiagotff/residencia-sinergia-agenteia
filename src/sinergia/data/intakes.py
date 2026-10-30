@@ -63,6 +63,11 @@ class IntakeRepository:
             raise NotFoundError(f"Protocolo não encontrado: {protocol}")
         return Intake.model_validate(dict(row))
 
+    def count(self) -> int:
+        """Quantos documentos foram recebidos."""
+        with self._db.connect() as conn:
+            return conn.execute("SELECT COUNT(*) FROM intakes").fetchone()[0]
+
     def exists(self, protocol: str) -> bool:
         """Se o protocolo já tem linha de entrada."""
         with self._db.connect() as conn:

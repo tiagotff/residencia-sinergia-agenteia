@@ -20,6 +20,17 @@ NOW = datetime(2026, 10, 28, 10, 0, tzinfo=ZoneInfo("America/Sao_Paulo"))
 YESTERDAY = date(2026, 10, 27)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cada teste começa sem as variáveis do .env de quem roda os testes.
+
+    A CrewAI chama ``load_dotenv()`` ao ser importada e copia o .env para o ambiente do
+    processo inteiro; sem esta limpeza, o .env local mudaria o resultado dos testes.
+    """
+    for name in Settings.model_fields:
+        monkeypatch.delenv(name.upper(), raising=False)
+
+
 @pytest.fixture(scope="session")
 def samples(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Pasta com o conjunto de documentos sintéticos."""

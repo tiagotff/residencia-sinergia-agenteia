@@ -1,0 +1,6 @@
+# Fim de linha LF no repositório e nas cópias de trabalho, em qualquer sistema.
+# Evita arquivos "modificados" só por causa do CRLF do Windows.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.pdf binary

@@ -34,9 +34,12 @@ from sinergia.data.database import Database
 from sinergia.data.employees import EmployeeRepository
 from sinergia.data.file_store import FileStore
 from sinergia.data.intakes import IntakeRepository
+from sinergia.data.reports import ReportRepository
 from sinergia.data.tasks import TaskRepository
 from sinergia.data.vacations import VacationRepository
 from sinergia.graph import build_case_graph, build_cycle_graph
+from sinergia.insights.crew import build_crew
+from sinergia.insights.service import InsightsDeps, InsightsService, ReportCrew
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,8 @@ class Container:
     review: ReviewService
     monitoring: MonitoringService
     escalation: EscalationService
+    reports: ReportRepository
+    insights: InsightsService
 
 
 @dataclass(frozen=True)
@@ -70,6 +75,7 @@ class Overrides:
     ocr: OcrEngine | None = None
     crm: CrmVerifier | None = None
     checkpointer: BaseCheckpointSaver | None = None
+    crew: ReportCrew | None = None
 
 
 @dataclass(frozen=True)
@@ -104,11 +110,16 @@ def build_container(settings: Settings, overrides: Overrides | None = None) -> C
         "caso": build_case_graph(agents, checkpointer),
         "ciclo": build_cycle_graph(agents, checkpointer),
     }
-    return _assemble(settings, shared, database, graphs)
+    insights = InsightsService(_insights_deps(settings, shared, database, extra))
+    return _assemble(settings, shared, database, graphs, insights)
 
 
 def _assemble(
-    settings: Settings, shared: _Shared, database: Database, graphs: dict[str, CompiledStateGraph]
+    settings: Settings,
+    shared: _Shared,
+    database: Database,
+    graphs: dict[str, CompiledStateGraph],
+    insights: InsightsService,
 ) -> Container:
     """Junta as peças e os serviços que usam os grafos do caso e do ciclo."""
     case = graphs["caso"]
@@ -122,6 +133,8 @@ def _assemble(
         escalation=EscalationService(
             graphs, shared.tasks, shared.rules.escalation, shared.audit, shared.clock
         ),
+        reports=ReportRepository(database),
+        insights=insights,
     )
 
 
@@ -201,6 +214,24 @@ def _escalation_deps(shared: _Shared) -> EscalationDeps:
         tasks=shared.tasks,
         audit=shared.audit,
         clock=shared.clock,
+    )
+
+
+def _insights_deps(
+    settings: Settings, shared: _Shared, database: Database, extra: Overrides
+) -> InsightsDeps:
+    """Dependências da crew de insights (CrewAI só com LLM configurado)."""
+    return InsightsDeps(
+        rules=shared.rules,
+        employees=shared.employees,
+        absences=shared.absences,
+        alerts=shared.alerts,
+        tasks=shared.tasks,
+        reports=ReportRepository(database),
+        audit=shared.audit,
+        clock=shared.clock,
+        salt=settings.pseudonym_salt.get_secret_value(),
+        crew=extra.crew or build_crew(settings),
     )
 
 

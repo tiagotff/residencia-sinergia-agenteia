@@ -12,8 +12,9 @@ pessoas sai do sistema sem passar por um profissional.
 | A3 · Monitoramento | Reativo baseado em modelo | Detectar padrões fora do esperado | Implementado |
 | A4 · Escalonamento | Baseado em utilidade | Encaminhar cada caso ao responsável certo | Implementado |
 
-Uma crew de insights em **CrewAI** gera, fora do fluxo principal, relatórios para o SESMT a
-partir de dados agregados e pseudonimizados.
+Uma crew de insights em **CrewAI** gera, fora do fluxo principal, um relatório semanal para o
+SESMT a partir só de dados agregados, e um **painel em Streamlit** mostra a cada perfil (colaborador,
+RH/DP, gestor, SESMT e auditoria) só o que ele precisa ver.
 
 ## Agente 1 — Recepção
 
@@ -210,10 +211,51 @@ sinergia tasks done 7 --by "Carlos (gestor)" --note "escala refeita"
 sinergia escalation sweep                        # reescala o que venceu
 ```
 
+## Crew de insights (CrewAI)
+
+Três agentes trabalham em sequência sobre um texto de fatos calculado em Python: o analista de
+tendências aponta o que mudou, o redator de saúde ocupacional escreve o relatório com sugestões
+de ação preventiva, e o revisor de privacidade aprova ou devolve. A crew nunca decide sobre um
+caso e não vê matrícula, pseudônimo, nome, CID, alerta individual (A04) nem grupo com menos de 5
+pessoas.
+
+Depois da crew, uma conferência em Python (regra I01) barra o texto que tiver matrícula,
+pseudônimo, código de CID, nome de grupo pequeno, termo estigmatizante ou qualquer número que não
+esteja nos fatos. Se a crew for barrada, falhar ou não estiver configurada, entra o relatório
+padrão, montado só com os fatos, e o motivo fica registrado. Todo relatório é rascunho até o
+médico do trabalho aprovar.
+
+A CrewAI usa o mesmo modelo do Groq pelo caminho compatível com a OpenAI (sem LiteLLM). Ela e o
+Streamlit ficam no extra `insights`: sem ele, o sistema funciona e o relatório sai pelo modelo
+padrão.
+
+```bash
+sinergia insights run --date 2026-10-28       # gera o rascunho (crew ou modelo padrão)
+sinergia insights show 1
+sinergia insights approve 1 --by "Dra. Ana (médica do trabalho)"
+```
+
+## Painel por perfil (Streamlit)
+
+```bash
+sinergia dashboard
+```
+
+| Perfil | O que vê |
+| --- | --- |
+| Colaborador | Situação do próprio protocolo, pendências e encaminhamentos, sem texto clínico |
+| RH/DP | Documentos recebidos, % processado sem revisão, fila de revisão e tarefas com prazo |
+| Gestor | Quem está ausente e até quando, cobertura das funções críticas e suas tarefas, sem saúde |
+| SESMT / médico do trabalho | Tendência semanal por setor, alertas completos, tarefas da saúde e o relatório da crew (gerar e aprovar) |
+| Auditoria | Trilha de auditoria, filtrável por ator |
+
+O perfil é escolhido na tela: o controle de acesso por login fica para a integração com a
+autenticação da empresa.
+
 ## Stack
 
 Python 3.12 · LangGraph (com checkpoint em SQLite) · LangChain · Groq · Pydantic · FastAPI ·
-SQLite · pypdf · Pillow · EasyOCR (PyTorch em CPU) · zeep · pytest · ruff
+SQLite · pypdf · Pillow · EasyOCR (PyTorch em CPU) · zeep · CrewAI · Streamlit · pytest · ruff
 
 ## Como executar
 
@@ -224,7 +266,7 @@ python -m venv .venv
 source .venv/Scripts/activate      # Windows (Git Bash)
 # source .venv/bin/activate        # Linux / macOS
 pip install -r requirements.lock
-pip install -e ".[dev]"
+pip install -e ".[dev,insights]"
 ```
 
 O EasyOCR instala o PyTorch para CPU (cerca de 1 GB no disco). No primeiro uso, ele baixa os
@@ -334,6 +376,10 @@ A documentação interativa fica em `http://127.0.0.1:8000/docs`.
 | POST | `/escalation/sweep` | Reescala as tarefas vencidas |
 | GET | `/tasks` | Tarefas por `destination` e `status` |
 | POST | `/tasks/{task_id}/complete` | `{"by", "note"}` |
+| POST | `/insights/run` | Gera o rascunho do relatório (`reference_date` opcional) |
+| GET | `/insights` | Relatórios recentes |
+| GET | `/insights/{report_id}` | Um relatório, com os fatos que o embasam |
+| POST | `/insights/{report_id}/decision` | `{"approve": true ou false, "by", "note"}` |
 | GET | `/health` | Disponibilidade |
 
 ```bash
@@ -348,18 +394,20 @@ curl -X POST http://127.0.0.1:8000/reception/submissions \
 ├── config/crm_registry.yaml       # CRMs fictícios para CRM_VERIFIER=local
 ├── src/sinergia/
 │   ├── core/                      # configuração, domínio, estado do caso, LLM, relógio
-│   ├── data/                      # SQLite, entradas, afastamentos, férias, cadastro, alertas, tarefas
+│   ├── data/                      # SQLite, entradas, afastamentos, férias, cadastro, alertas, tarefas, relatórios
 │   ├── agents/reception/          # Agente 1: inspeção, classificação, objetivo, grafo
 │   ├── agents/processing/         # Agente 2: leitura/OCR, extração, CRM, regras, revisão
 │   ├── agents/monitoring/         # Agente 3: visão pseudonimizada, regras A01–A05, alertas
 │   ├── agents/escalation/         # Agente 4: demandas, função de utilidade, confirmação, prazos
+│   ├── insights/                  # crew de insights (CrewAI): fatos, crew, conferência, relatório padrão
+│   ├── dashboard/                 # painel por perfil (Streamlit)
 │   ├── graph.py                   # grafos do caso e do ciclo, com os agentes como subgrafos
 │   ├── api/                       # FastAPI
 │   ├── synthetic/                 # documentos e histórico fictícios
 │   ├── bootstrap.py               # montagem das dependências
-│   └── cli/                       # comando `sinergia` (envio, revisão, férias, monitoramento, escalonamento)
+│   └── cli/                       # comando `sinergia` (envio, revisão, férias, monitoramento, escalonamento, insights, painel)
 ├── scripts/                       # utilitários de linha de comando
-└── tests/                         # testes da fundação, dos quatro agentes e da API
+└── tests/                         # testes da fundação, dos quatro agentes, da crew, do painel e da API
 ```
 
 ## Privacidade (LGPD)
@@ -373,6 +421,9 @@ curl -X POST http://127.0.0.1:8000/reception/submissions \
 - O Agente 3 só vê pseudônimos (HMAC-SHA256 da matrícula com o `PSEUDONYM_SALT` do `.env`) e
   a categoria do CID (3 caracteres). Alertas de saúde coletiva valem só para grupos com pelo
   menos 5 pessoas (A05); a visão da gestão na API não mostra o grupo de CID.
+- A crew de insights só recebe agregados de grupos com 5 pessoas ou mais, sem CID; o texto dela
+  passa por uma conferência em Python antes de virar rascunho, e o painel mostra a cada perfil só
+  o que ele precisa (o gestor nunca vê saúde).
 - A trilha de auditoria registra ação, regras disparadas, versão das regras e responsável, sem
   conteúdo do documento.
 - Com o Groq como provedor, ative o Zero Data Retention em *Data Controls* no console. Em
